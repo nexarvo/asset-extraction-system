@@ -1,10 +1,34 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AppLoggerService } from './core/app-logger.service';
+import { ExtractionController } from './controllers/extraction.controller';
+import { RequestLoggingMiddleware } from './middlewares/request-logging.middleware';
+import { ExtractionRepository } from './repositories/extraction.repository';
+import { CsvExtractionService } from './services/extractCSV';
+import { DigitalPdfExtractionService } from './services/extractDigitalPDF';
+import { PdfExtractionService } from './services/extractPDF';
+import { ScannedPdfExtractionService } from './services/extractScannedPDF';
+import { XlsxExtractionService } from './services/extractXLSX';
+import { PaddleOcrService } from './services/paddleOCR';
 
 @Module({
   imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [AppController, ExtractionController],
+  providers: [
+    AppService,
+    AppLoggerService,
+    ExtractionRepository,
+    CsvExtractionService,
+    XlsxExtractionService,
+    PdfExtractionService,
+    DigitalPdfExtractionService,
+    ScannedPdfExtractionService,
+    PaddleOcrService,
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestLoggingMiddleware).forRoutes('*');
+  }
+}
