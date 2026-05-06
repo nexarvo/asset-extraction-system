@@ -46,6 +46,10 @@ export class PdfExtractionService {
       return true;
     }
 
+    if (/%PDF/i.test(decoded) && /[A-Za-z]{3,}/.test(decoded)) {
+      return false;
+    }
+
     const printableCharacters = decoded.replace(/[^\x20-\x7E]/g, '');
     return printableCharacters.trim().length < 25;
   }

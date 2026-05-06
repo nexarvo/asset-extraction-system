@@ -1,15 +1,55 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UploadedFileValidationPipe } from '../pipes/file-validation.pipe';
 import { ExtractionRepository } from '../repositories/extraction.repository';
 import { CsvExtractionService } from '../services/extractCSV';
 import { PdfExtractionService } from '../services/extractPDF';
 import { XlsxExtractionService } from '../services/extractXLSX';
-import { AssetFileInput, StoredExtraction } from '../utils/extraction.types';
+import { SupportedFileType } from '../utils/extraction.types';
+import type {
+  AssetFileInput,
+  StoredExtraction,
+} from '../utils/extraction.types';
 
-interface ExtractionRequestDto {
-  readonly filename: string;
-  readonly contentBase64: string;
-  readonly mimeType?: string;
-}
+const MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024;
+
+const FILE_INTERCEPTOR_OPTIONS = {
+  limits: {
+    fileSize: MAX_UPLOAD_SIZE_BYTES,
+    files: 1,
+  },
+};
+
+const CSV_UPLOAD_PIPE = new UploadedFileValidationPipe({
+  allowedFileTypes: [SupportedFileType.Csv],
+  allowedMimeTypes: [
+    'text/csv',
+    'application/csv',
+    'application/vnd.ms-excel',
+    'text/plain',
+  ],
+});
+
+const XLSX_UPLOAD_PIPE = new UploadedFileValidationPipe({
+  allowedFileTypes: [SupportedFileType.Xls, SupportedFileType.Xlsx],
+  allowedMimeTypes: [
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/octet-stream',
+  ],
+});
+
+const PDF_UPLOAD_PIPE = new UploadedFileValidationPipe({
+  allowedFileTypes: [SupportedFileType.Pdf],
+  allowedMimeTypes: ['application/pdf', 'application/octet-stream'],
+});
 
 @Controller('extractions')
 export class ExtractionController {
@@ -21,21 +61,33 @@ export class ExtractionController {
   ) {}
 
   @Post('csv')
-  async extractCsv(@Body() body: ExtractionRequestDto): Promise<StoredExtraction> {
-    const result = await this.csvExtractionService.extractDataFromCsv(this.toFileInput(body));
-    return this.extractionRepository.save(result);
+  @UseInterceptors(FileInterceptor('file', FILE_INTERCEPTOR_OPTIONS))
+  async extractCsv(
+    @UploadedFile(CSV_UPLOAD_PIPE) file: AssetFileInput,
+  ): Promise<StoredExtraction> {
+    const result = await this.csvExtractionService.extractDataFromCsv(file);
+    const stored = await this.extractionRepository.save(result);
+    return stored;
   }
 
   @Post('xlsx')
-  async extractXlsx(@Body() body: ExtractionRequestDto): Promise<StoredExtraction> {
-    const result = await this.xlsxExtractionService.extractDataFromXlsx(this.toFileInput(body));
-    return this.extractionRepository.save(result);
+  @UseInterceptors(FileInterceptor('file', FILE_INTERCEPTOR_OPTIONS))
+  async extractXlsx(
+    @UploadedFile(XLSX_UPLOAD_PIPE) file: AssetFileInput,
+  ): Promise<StoredExtraction> {
+    const result = await this.xlsxExtractionService.extractDataFromXlsx(file);
+    const stored = await this.extractionRepository.save(result);
+    return stored;
   }
 
   @Post('pdf')
-  async extractPdf(@Body() body: ExtractionRequestDto): Promise<StoredExtraction> {
-    const result = await this.pdfExtractionService.extractDataFromPdf(this.toFileInput(body));
-    return this.extractionRepository.save(result);
+  @UseInterceptors(FileInterceptor('file', FILE_INTERCEPTOR_OPTIONS))
+  async extractPdf(
+    @UploadedFile(PDF_UPLOAD_PIPE) file: AssetFileInput,
+  ): Promise<StoredExtraction> {
+    const result = await this.pdfExtractionService.extractDataFromPdf(file);
+    const stored = await this.extractionRepository.save(result);
+    return stored;
   }
 
   @Get()
@@ -44,15 +96,9 @@ export class ExtractionController {
   }
 
   @Get(':id')
-  async getExtraction(@Param('id') id: string): Promise<StoredExtraction | undefined> {
+  async getExtraction(
+    @Param('id') id: string,
+  ): Promise<StoredExtraction | undefined> {
     return this.extractionRepository.findById(id);
-  }
-
-  private toFileInput(body: ExtractionRequestDto): AssetFileInput {
-    return {
-      filename: body.filename,
-      mimeType: body.mimeType,
-      buffer: Buffer.from(body.contentBase64, 'base64'),
-    };
   }
 }
