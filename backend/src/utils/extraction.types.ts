@@ -45,6 +45,7 @@ export interface ExtractionResult {
   readonly text?: string;
   readonly strategy?: PdfExtractionStrategy;
   readonly metadata: ExtractionMetadata;
+  readonly pdfDocument?: PdfDocument;
 }
 
 export interface ExtractionMetadata {
@@ -63,4 +64,26 @@ export interface StoredExtraction {
   readonly id: string;
   readonly result: ExtractionResult;
   readonly createdAt: string;
+}
+
+export type TextBlockType = 'paragraph' | 'header' | 'table' | 'footer' | 'unknown';
+
+export interface TextBlockPosition {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface TextBlock {
+  readonly text: string;
+  readonly type: TextBlockType;
+  readonly position?: TextBlockPosition;
+}
+
+export interface PdfPage {
+  readonly pageNumber: number;
+  readonly textBlocks: TextBlock[];
+}
+
+export interface PdfDocument {
+  readonly pages: PdfPage[];
 }

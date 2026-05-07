@@ -50,6 +50,7 @@ const XLSX_UPLOAD_PIPE = new UploadedFileValidationPipe({
 const PDF_UPLOAD_PIPE = new UploadedFileValidationPipe({
   allowedFileTypes: [SupportedFileType.Pdf],
   allowedMimeTypes: ['application/pdf', 'application/octet-stream'],
+  fallbackMimeTypes: ['text/plain'],
 });
 
 @Controller('extractions')
