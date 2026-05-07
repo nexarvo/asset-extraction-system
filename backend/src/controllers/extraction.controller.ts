@@ -15,7 +15,7 @@ import { CsvExtractionService } from '../services/extractCSV';
 import { JobDispatcherService } from '../services/job-dispatcher.service';
 import { PdfExtractionService } from '../services/extractPDF';
 import { XlsxExtractionService } from '../services/extractXLSX';
-import { SupportedFileType, QueuedJobResponse } from '../utils/extraction.types';
+import { SupportedFileType, QueuedJobResponse, JobStatusResponse } from '../utils/extraction.types';
 import type {
   AssetFileInput,
   StoredExtraction,
@@ -139,7 +139,7 @@ export class ExtractionController {
   @Get('jobs/:jobId')
   async getJobStatus(
     @Param('jobId') jobId: string,
-  ): Promise<QueuedJobResponse | { error: string }> {
+  ): Promise<JobStatusResponse | { error: string }> {
     const status = await this.jobDispatcherService.getJobStatus(jobId);
 
     if (!status) {

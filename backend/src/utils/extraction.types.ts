@@ -66,7 +66,7 @@ export interface StoredExtraction {
   readonly createdAt: string;
 }
 
-export type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'retrying';
+export type JobStatus = 'waiting' | 'processing' | 'completed' | 'failed' | 'retrying';
 
 export interface ExtractionJobData {
   readonly jobId: string;
@@ -88,6 +88,13 @@ export interface QueuedJobResponse {
   readonly jobId: string;
   readonly filename: string;
   readonly status: JobStatus;
+}
+
+export interface JobStatusResponse {
+  readonly jobId: string;
+  readonly status: JobStatus;
+  readonly progress: number;
+  readonly error?: string;
 }
 
 export type TextBlockType = 'paragraph' | 'header' | 'table' | 'footer' | 'unknown';

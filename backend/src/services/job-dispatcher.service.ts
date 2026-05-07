@@ -10,6 +10,8 @@ import {
 import {
   ExtractionJobData,
   QueuedJobResponse,
+  JobStatusResponse,
+  JobStatus,
 } from '../utils/extraction.types';
 import { getFileExtension } from '../utils/file.utils';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
@@ -103,7 +105,7 @@ export class JobDispatcherService {
     }
   }
 
-  async getJobStatus(jobId: string): Promise<QueuedJobResponse | null> {
+  async getJobStatus(jobId: string): Promise<JobStatusResponse | null> {
     try {
       const job = await this.processingJobRepository.findById(jobId);
 
@@ -111,10 +113,14 @@ export class JobDispatcherService {
         return null;
       }
 
+      const progress = this.calculateProgress(job.status);
+      const status = this.mapJobStatus(job.status);
+
       return {
         jobId: job.id,
-        filename: '',
-        status: job.status as 'waiting' | 'active' | 'completed' | 'failed' | 'retrying',
+        status,
+        progress,
+        error: job.errorSummary ?? undefined,
       };
     } catch (error) {
       this.logger.error(
@@ -127,6 +133,33 @@ export class JobDispatcherService {
         },
       );
       return null;
+    }
+  }
+
+  private mapJobStatus(status: ProcessingJobStatus): JobStatus {
+    switch (status) {
+      case ProcessingJobStatus.QUEUED:
+        return 'waiting';
+      case ProcessingJobStatus.RUNNING:
+        return 'processing';
+      default:
+        return status as JobStatus;
+    }
+  }
+
+  private calculateProgress(status: ProcessingJobStatus): number {
+    switch (status) {
+      case ProcessingJobStatus.QUEUED:
+        return 0;
+      case ProcessingJobStatus.RUNNING:
+        return 50;
+      case ProcessingJobStatus.COMPLETED:
+        return 100;
+      case ProcessingJobStatus.FAILED:
+      case ProcessingJobStatus.RETRYING:
+        return 0;
+      default:
+        return 0;
     }
   }
 
