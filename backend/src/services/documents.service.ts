@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { AppLoggerService } from '../core/app-logger.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
+import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
 import { DocumentEntity, DocumentIngestionStatus } from '../entities/document.entity';
 import { ProcessingJobEntity, ProcessingJobStatus } from '../entities/processing-job.entity';
-import { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto } from '../dtos';
+import { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto, ReviewResponseDto, ExtractedFieldDto } from '../dtos';
 import { JobStatus } from '../utils/extraction.types';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class DocumentsService {
   constructor(
     private readonly documentRepository: DocumentRepository,
     private readonly processingJobRepository: ProcessingJobRepository,
+    private readonly extractedAssetFieldRepository: ExtractedAssetFieldRepository,
     private readonly logger: AppLoggerService,
   ) {}
 
@@ -162,6 +164,38 @@ export class DocumentsService {
       createdAt: document.createdAt,
     };
   }
+
+  async review(documentId: string, page: number = 1, pageSize: number = 50): Promise<ReviewResponseDto | null> {
+    const document = await this.documentRepository.findById(documentId);
+    if (!document) {
+      return null;
+    }
+
+    const { fields, total } = await this.extractedAssetFieldRepository.findByDocumentIdPaginated(documentId, page, pageSize);
+
+    return {
+      documentId: document.id,
+      originalFileName: document.originalFileName,
+      mimeType: document.mimeType,
+      totalFields: total,
+      page,
+      pageSize,
+      fields: fields.map((field) => ({
+        id: field.id,
+        fieldName: field.fieldName,
+        rawValue: field.rawValue,
+        normalizedValue: field.normalizedValue,
+        confidenceScore: field.confidenceScore,
+        extractionMethod: field.extractionMethod,
+        reviewStatus: field.reviewStatus,
+        validationStatus: field.validationStatus,
+        sourceRowIndex: field.sourceRowIndex,
+        sourceSheetName: field.sourceSheetName,
+        isInferred: field.isInferred,
+        createdAt: field.createdAt,
+      })),
+    };
+  }
 }
 
-export { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto };
+export { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto, ReviewResponseDto, ExtractedFieldDto };

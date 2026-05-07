@@ -129,4 +129,14 @@ export class ExtractedAssetFieldRepository {
   async deleteByDocumentId(documentId: string): Promise<void> {
     await this.repository.delete({ documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>);
   }
+
+  async findByDocumentIdPaginated(documentId: string, page: number = 1, pageSize: number = 50): Promise<{ fields: ExtractedAssetFieldEntity[]; total: number }> {
+    const [fields, total] = await this.repository.findAndCount({
+      where: { documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { fields, total };
+  }
 }

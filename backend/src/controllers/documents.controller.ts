@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { DocumentsService } from '../services/documents.service';
-import type { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto } from '../dtos';
+import type { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto, ReviewResponseDto } from '../dtos';
 
 @Controller('documents')
 export class DocumentsController {
@@ -54,5 +54,14 @@ export class DocumentsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string): Promise<void> {
     return this.documentsService.remove(id);
+  }
+
+  @Get(':documentId/review')
+  async review(
+    @Param('documentId') documentId: string,
+    @Query('page') page: number = 1,
+    @Query('pageSize') pageSize: number = 10,
+  ): Promise<ReviewResponseDto> {
+    return this.documentsService.review(documentId, page, pageSize);
   }
 }
