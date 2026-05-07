@@ -19,6 +19,8 @@ import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
 import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
+import { BatchExtractionAccumulator } from '../services/batch-extraction-accumulator.service';
+import { StreamingBatchProcessor } from '../services/streaming-batch-processor';
 import { CsvRowValidator } from '../services/csv-row-validator';
 import { XlsxRowValidator } from '../services/xlsx-row-validator';
 import { DocumentRepository } from '../repositories/document.repository';
@@ -94,6 +96,8 @@ import {
     XlsxAssetMapperService,
     PaddleOcrService,
     ExtractionPersistenceService,
+    BatchExtractionAccumulator,
+    StreamingBatchProcessor,
     CsvRowValidator,
     XlsxRowValidator,
     DocumentRepository,

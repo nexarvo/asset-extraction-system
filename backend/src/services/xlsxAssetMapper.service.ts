@@ -42,23 +42,25 @@ export class XlsxAssetMapperService {
         rawAssetName = String(value);
       }
 
-      const fieldCandidate: ExtractedFieldCandidate = {
+      fields.push({
         fieldName: mappedFieldName,
         rawValue: value !== null ? String(value) : null,
         normalizedValue: this.normalizeValue(mappedFieldName, value),
         confidenceScore: this.calculateConfidence(mappedFieldName, value),
         sourceColumn: columnName,
-      };
-
-      fields.push(fieldCandidate);
+      });
     }
 
     return {
       rawAssetName,
-      fields,
+      fields: [],
       sourceRowIndex: parsedRow.rowIndex,
       sourceSheetName: parsedRow.sheetName,
       overallConfidence: this.calculateOverallConfidence(fields),
+      rawRowData: parsedRow.data,
+      normalizedRowData: Object.fromEntries(
+        fields.map(f => [f.fieldName, f.normalizedValue])
+      ),
     };
   }
 

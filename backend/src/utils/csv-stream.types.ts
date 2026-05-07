@@ -24,6 +24,8 @@ export interface ExtractedAssetCandidate {
   sourceRowIndex: number;
   sourceSheetName?: string;
   overallConfidence?: number;
+  rawRowData?: Record<string, string | number | null>;
+  normalizedRowData?: Record<string, unknown>;
 }
 
 export interface CsvRowError {

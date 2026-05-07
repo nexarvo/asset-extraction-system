@@ -11,6 +11,9 @@ import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import { ProcessingJobStatus } from '../entities/processing-job.entity';
 import { DataSource } from 'typeorm';
+import { XlsxExtractionService } from '../services/extractXLSX';
+import { SupportedFileType } from '../utils/extraction.types';
+import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
 
 const WORKER_CONCURRENCY = 3;
 
@@ -25,6 +28,7 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     private readonly processingJobRepository: ProcessingJobRepository,
     private readonly extractionErrorRepository: ExtractionErrorRepository,
     private readonly dataSource: DataSource,
+    private readonly xlsxExtractionService: XlsxExtractionService,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
       EXTRACTION_QUEUE_NAME,
@@ -107,119 +111,159 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
     await this.processingJobRepository.updateStatus(jobId, ProcessingJobStatus.RUNNING);
 
-    try {
-      const strategy = this.strategyFactory.getStrategy(fileType);
+    const processingJob = await this.processingJobRepository.findById(jobId);
+    let documentId = processingJob?.documentId;
 
-      if (!strategy) {
-        throw new ApplicationError(ErrorCode.UnsupportedFileType, undefined, {
-          filename,
-          fileType,
+    if (!documentId) {
+      this.logger.warn('No document associated with job, creating one', 'ExtractionWorker', { jobId });
+      
+      const doc = await this.dataSource.query(
+        `INSERT INTO documents (id, original_file_name, storage_key, ingestion_status, created_at)
+         VALUES (gen_random_uuid(), $1, $2, 'processing', now())
+         RETURNING id`,
+        [filename, `uploads/${Date.now()}-${filename}`],
+      );
+      
+      documentId = doc[0]?.id;
+      
+      if (documentId) {
+        await this.dataSource.query(
+          `UPDATE processing_jobs SET document_id = $1 WHERE id = $2`,
+          [documentId, jobId],
+        );
+      } else {
+        throw new ApplicationError(ErrorCode.PersistenceFailed, undefined, {
+          jobId,
+          reason: 'Failed to create document',
         });
       }
+    }
 
-      this.logger.log('extracting with strategy', 'ExtractionWorker', { fileType, strategy: strategy.constructor.name });
+    const isXlsx = fileType === 'xlsx' || fileType === 'xls';
+    if (isXlsx) {
+      await this.processXlsxWithStreaming(bufferData, filename, documentId, jobId);
+    } else {
+      await this.processWithStrategy(bufferData, filename, fileType, documentId, jobId);
+    }
 
-      const result = await strategy.extract(bufferData, filename);
+    return {
+      jobId,
+      status: 'completed',
+      filename,
+      fileType,
+    };
+  }
 
-      this.logger.log('extraction completed', 'ExtractionWorker', {
-        jobId,
-        recordCount: result.records?.length || 0,
-        metadata: result.metadata,
-      });
+  private async processXlsxWithStreaming(
+    bufferData: Buffer,
+    filename: string,
+    documentId: string,
+    jobId: string,
+  ): Promise<void> {
+    const workbook = this.xlsxExtractionService.readWorkbook(bufferData);
+    const batch: ExtractedAssetCandidate[] = [];
+    const BATCH_SIZE = 500;
 
-      const processingJob = await this.processingJobRepository.findById(jobId);
-
-      let documentId = processingJob?.documentId;
-
-      if (!documentId) {
-        this.logger.warn('No document associated with job, creating one', 'ExtractionWorker', { jobId });
-        
-        const doc = await this.dataSource.query(
-          `INSERT INTO documents (id, original_file_name, storage_key, ingestion_status, created_at)
-           VALUES (gen_random_uuid(), $1, $2, 'processing', now())
-           RETURNING id`,
-          [filename, `uploads/${Date.now()}-${filename}`],
-        );
-        
-        documentId = doc[0]?.id;
-        
-        if (documentId) {
-          await this.dataSource.query(
-            `UPDATE processing_jobs SET document_id = $1 WHERE id = $2`,
-            [documentId, jobId],
-          );
-        } else {
-          throw new ApplicationError(ErrorCode.PersistenceFailed, undefined, {
-            jobId,
-            reason: 'Failed to create document',
-          });
+    await this.xlsxExtractionService.processWorkbookWithBackpressure(
+      workbook,
+      filename,
+      async (candidate) => {
+        if (candidate.rawRowData || candidate.normalizedRowData) {
+          batch.push(candidate);
+          if (batch.length >= BATCH_SIZE) {
+            await this.persistBatchAndLogErrors(batch, documentId, jobId);
+            batch.length = 0;
+          }
         }
-      }
+      },
+    );
 
-      const candidates = this.mapToAssetCandidates(result.records, documentId);
+    if (batch.length > 0) {
+      await this.persistBatchAndLogErrors(batch, documentId, jobId);
+    }
+  }
 
-      if (candidates.length > 0) {
-        const persistenceResult = await this.persistenceService.persistBatch(
-          documentId,
-          jobId,
-          candidates,
-          100,
-        );
+  private async persistBatchAndLogErrors(candidates: ExtractedAssetCandidate[], documentId: string, jobId: string): Promise<void> {
+    const result = await this.persistenceService.persistBatchWithTransaction(
+      documentId,
+      jobId,
+      candidates,
+    );
 
-        this.logger.log(
-          'batch persistence completed',
-          'ExtractionWorker',
-          {
-            jobId,
-            savedAssets: persistenceResult.savedAssets,
-            savedFields: persistenceResult.savedFields,
-            errors: persistenceResult.errors.length,
-          },
-        );
+    this.logger.log('batch persistence completed', 'ExtractionWorker', {
+      jobId,
+      savedAssets: result.savedAssets,
+      savedFields: result.savedFields,
+      errors: result.errors.length,
+    });
 
-        for (const error of persistenceResult.errors) {
-          await this.persistenceService.logError(
-            jobId,
-            'VALIDATION',
-            'XLSX_ROW_INVALID',
-            error.reason,
-            error.rowIndex,
-          );
-        }
-      }
-
-      return {
+    for (const error of result.errors) {
+      await this.persistenceService.logError(
         jobId,
-        status: 'completed',
+        'VALIDATION',
+        'XLSX_ROW_INVALID',
+        error.reason,
+        error.rowIndex,
+      );
+    }
+  }
+
+  private async processWithStrategy(
+    bufferData: Buffer,
+    filename: string,
+    fileType: string,
+    documentId: string,
+    jobId: string,
+  ): Promise<void> {
+    const strategy = this.strategyFactory.getStrategy(fileType);
+
+    if (!strategy) {
+      throw new ApplicationError(ErrorCode.UnsupportedFileType, undefined, {
         filename,
         fileType,
-      };
-    } catch (error) {
-      this.logger.error(
-        'extraction error',
-        error instanceof Error ? error.stack : undefined,
+      });
+    }
+
+    this.logger.log('extracting with strategy', 'ExtractionWorker', { fileType, strategy: strategy.constructor.name });
+
+    const result = await strategy.extract(bufferData, filename);
+
+    this.logger.log('extraction completed', 'ExtractionWorker', {
+      jobId,
+      recordCount: result.records?.length || 0,
+      metadata: result.metadata,
+    });
+
+    const candidates = this.mapToAssetCandidates(result.records, documentId);
+    const validCandidates = candidates.filter(c => (c.rawRowData && Object.keys(c.rawRowData).length > 0) || (c.normalizedRowData && Object.keys(c.normalizedRowData).length > 0));
+
+    if (validCandidates.length > 0) {
+      const persistenceResult = await this.persistenceService.persistBatchWithTransaction(
+        documentId,
+        jobId,
+        validCandidates,
+      );
+
+      this.logger.log(
+        'batch persistence completed',
         'ExtractionWorker',
         {
           jobId,
-          filename,
-          error: error instanceof Error ? error.message : String(error),
-          cause: error instanceof ApplicationError ? (error as any).details : undefined,
+          savedAssets: persistenceResult.savedAssets,
+          savedFields: persistenceResult.savedFields,
+          errors: persistenceResult.errors.length,
         },
       );
 
-      const isRetryable =
-        error instanceof Error &&
-        !(
-          error instanceof ApplicationError &&
-          (error.code === ErrorCode.ValidationFailed ||
-            error.code === ErrorCode.UnsupportedFileType)
+      for (const error of persistenceResult.errors) {
+        await this.persistenceService.logError(
+          jobId,
+          'VALIDATION',
+          'CSV_ROW_INVALID',
+          error.reason,
+          error.rowIndex,
         );
-
-      if (!isRetryable) {
-        await this.processingJobRepository.setError(jobId, (error as Error).message);
       }
-
-      throw error;
     }
   }
 
@@ -228,27 +272,34 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     documentId: string,
     sourceSheetName?: string,
   ): import('../utils/csv-stream.types').ExtractedAssetCandidate[] {
-    const metaFields = ['sheetName', 'sourceSheetName', 'sourceRowIndex', 'overallConfidence', 'rawAssetName'];
-    
-    return records.map((record, index) => {
-      const fields = Object.entries(record)
-        .filter(([key]) => !metaFields.includes(key))
-        .map(([key, value]) => ({
-          fieldName: key,
-          rawValue: value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : null,
-          normalizedValue: value,
-          confidenceScore: 0.8,
-          sourceColumn: key,
-        }));
-      
-      return {
-        rawAssetName: String(record['asset_name'] || record['name'] || record['Asset Name'] || record['asset'] || `asset_${index + 1}`),
-        fields,
-        sourceRowIndex: index + 1,
-        sourceSheetName: sourceSheetName || record['sheetName'] as string || undefined,
-        overallConfidence: 0.8,
-      };
-    });
+    return records
+      .map((record, index) => {
+        if (record && (record as any).rawRowData) {
+          return record as unknown as import('../utils/csv-stream.types').ExtractedAssetCandidate;
+        }
+
+        const metaFields = ['sheetName', 'sourceSheetName', 'sourceRowIndex', 'overallConfidence', 'rawAssetName'];
+        const rawRowData: Record<string, string | number | null> = {};
+        const normalizedRowData: Record<string, unknown> = {};
+        
+        for (const [key, value] of Object.entries(record)) {
+          if (!metaFields.includes(key) && key && key.trim() !== '') {
+            rawRowData[key] = value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : null;
+            normalizedRowData[key] = value;
+          }
+        }
+        
+        return {
+          rawAssetName: String(record['asset_name'] || record['name'] || record['Asset Name'] || record['asset'] || `asset_${index + 1}`),
+          fields: [],
+          sourceRowIndex: index + 1,
+          sourceSheetName: sourceSheetName || (record['sheetName'] as string) || undefined,
+          overallConfidence: 0.8,
+          rawRowData: Object.keys(rawRowData).length > 0 ? rawRowData : undefined,
+          normalizedRowData: Object.keys(normalizedRowData).length > 0 ? normalizedRowData : undefined,
+        };
+      })
+      .filter(c => (c as any).rawRowData !== undefined || (c as any).normalizedRowData !== undefined);
   }
 
   private getWorkerOptions() {

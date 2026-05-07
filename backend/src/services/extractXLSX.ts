@@ -247,7 +247,131 @@ export class XlsxExtractionService {
     return { candidates, warnings };
   }
 
-  private readWorkbook(buffer: Buffer): XLSX.WorkBook {
+  async processWorkbookWithBackpressure(
+    workbook: XLSX.WorkBook,
+    filename: string,
+    onCandidate: (candidate: ExtractedAssetCandidate) => Promise<void>,
+  ): Promise<{ totalProcessed: number; warnings: string[] }> {
+    const warnings: string[] = [];
+    let totalProcessed = 0;
+
+    try {
+      for (const sheetName of workbook.SheetNames) {
+        const worksheet = workbook.Sheets[sheetName];
+        const result = await this.processSheetWithBackpressure(
+          worksheet,
+          sheetName,
+          filename,
+          onCandidate,
+        );
+        totalProcessed += result.processedRows;
+        warnings.push(...result.warnings);
+      }
+
+      this.logger.log('spreadsheet extraction with backpressure completed', 'XlsxExtractionService', {
+        filename,
+        totalProcessed,
+      });
+
+      return { totalProcessed, warnings };
+    } catch (error) {
+      throw new ApplicationError(ErrorCode.XlsxWorkbookFailure, undefined, {
+        filename,
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async processSheetWithBackpressure(
+    worksheet: XLSX.WorkSheet | undefined,
+    sheetName: string,
+    filename: string,
+    onCandidate: (candidate: ExtractedAssetCandidate) => Promise<void>,
+  ): Promise<{ processedRows: number; warnings: string[] }> {
+    const warnings: string[] = [];
+    let processedRows = 0;
+
+    if (!worksheet?.['!ref']) {
+      return { processedRows, warnings };
+    }
+
+    const range = XLSX.utils.decode_range(worksheet['!ref']);
+    const headerRowNumber = this.detectHeaderRowNumber(worksheet, range);
+
+    if (headerRowNumber === null) {
+      return { processedRows, warnings };
+    }
+
+    const headerCells = this.readRowValues(
+      worksheet,
+      headerRowNumber,
+      range.s.c,
+      range.e.c,
+    );
+    const headerLength = this.findLastNonEmptyIndex(headerCells) + 1;
+    const headers = normalizeXlsxHeaders(headerCells.slice(0, headerLength));
+    this.rowValidator.setHeaderCount(headers.length);
+
+    let consecutiveEmptyRows = 0;
+    const MAX_CONSECUTIVE_EMPTY_ROWS = 100;
+
+    for (
+      let rowNumber = headerRowNumber + 1;
+      rowNumber <= range.e.r;
+      rowNumber += 1
+    ) {
+      processedRows++;
+      try {
+        const values = this.readRowValues(
+          worksheet,
+          rowNumber,
+          range.s.c,
+          range.s.c + headerLength - 1,
+        );
+
+        const rawRow: RawXlsxRow = {
+          sheetName,
+          rowIndex: rowNumber + 1,
+          headers,
+          values,
+          raw: this.valuesToRecord(headers, values),
+        };
+
+        const isEmptyRow = values.every((v) => this.isEmpty(v));
+        if (isEmptyRow) {
+          consecutiveEmptyRows++;
+          if (consecutiveEmptyRows >= MAX_CONSECUTIVE_EMPTY_ROWS) {
+            break;
+          }
+          continue;
+        } else {
+          consecutiveEmptyRows = 0;
+        }
+
+        if (this.isTrailingNoteRow(rawRow)) {
+          continue;
+        }
+
+        const validationResult = this.rowValidator.validateRow(rawRow);
+        if (!validationResult.isValid) {
+          validationResult.errors.forEach((error) => {
+            warnings.push(`sheet ${sheetName}, row ${error.rowIndex}: ${error.reason}`);
+          });
+          continue;
+        }
+
+        const parsedRow = this.rowValidator.parseRow(rawRow);
+        const candidate = this.xlsxAssetMapperService.mapRow(parsedRow);
+        await onCandidate(candidate);
+      } catch (error) {
+        warnings.push(`sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return { processedRows, warnings };
+  }
+
+  readWorkbook(buffer: Buffer): XLSX.WorkBook {
     return XLSX.read(buffer, { type: 'buffer', cellDates: true });
   }
 

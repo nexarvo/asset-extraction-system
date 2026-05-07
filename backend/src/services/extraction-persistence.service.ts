@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ExtractedAssetCandidate, BatchPersistenceResult, CsvRowError } from '../utils/csv-stream.types';
-import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
-import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
-import { ExtractedAssetFieldEntity, ExtractionMethod, ExtractedAssetReviewStatus } from '../entities/extracted-asset-field.entity';
+import { ExtractedAssetFieldRepository, BulkInsertFieldData } from '../repositories/extracted-asset-field.repository';
+import { ExtractionErrorRepository, BulkInsertErrorData } from '../repositories/extraction-error.repository';
+import { ExtractionMethod, ExtractedAssetReviewStatus } from '../entities/extracted-asset-field.entity';
 
 @Injectable()
 export class ExtractionPersistenceService {
+  private errorBuffer: BulkInsertErrorData[] = [];
+  private readonly ERROR_FLUSH_THRESHOLD = 500;
+
   constructor(
     private readonly extractedAssetFieldRepository: ExtractedAssetFieldRepository,
     private readonly extractionErrorRepository: ExtractionErrorRepository,
@@ -15,7 +18,7 @@ export class ExtractionPersistenceService {
     documentId: string,
     extractionJobId: string | null,
     candidates: ExtractedAssetCandidate[],
-    batchSize: number = 100,
+    batchSize: number = 500,
   ): Promise<BatchPersistenceResult> {
     const errors: CsvRowError[] = [];
     let savedFields = 0;
@@ -26,6 +29,35 @@ export class ExtractionPersistenceService {
       const result = await this.persistChunk(documentId, extractionJobId, chunk);
       savedFields += result.savedFields;
       errors.push(...result.errors);
+    }
+
+    await this.flushErrors(extractionJobId);
+
+    return { savedAssets: candidates.length, savedFields, errors };
+  }
+
+  async persistBatchWithTransaction(
+    documentId: string,
+    extractionJobId: string | null,
+    candidates: ExtractedAssetCandidate[],
+  ): Promise<BatchPersistenceResult> {
+    const errors: CsvRowError[] = [];
+    let savedFields = 0;
+
+    try {
+      const fieldsToInsert = this.transformCandidatesToInsertData(documentId, extractionJobId, candidates);
+
+      if (fieldsToInsert.length > 0) {
+        savedFields = await this.extractedAssetFieldRepository.bulkInsertWithTransaction(fieldsToInsert);
+      }
+    } catch (error) {
+      for (const candidate of candidates) {
+        errors.push({
+          rowIndex: candidate.sourceRowIndex,
+          reason: `Batch transaction failed: ${(error as Error).message}`,
+        });
+      }
+      savedFields = 0;
     }
 
     return { savedAssets: candidates.length, savedFields, errors };
@@ -40,31 +72,10 @@ export class ExtractionPersistenceService {
     let savedFields = 0;
 
     try {
-      const fieldsToInsert: Partial<ExtractedAssetFieldEntity>[] = [];
-
-      for (const candidate of candidates) {
-        for (const field of candidate.fields) {
-          fieldsToInsert.push({
-            documentId,
-            extractionJobId: extractionJobId || null,
-            rawAssetName: candidate.rawAssetName || null,
-            overallConfidence: candidate.overallConfidence ?? null,
-            reviewStatus: ExtractedAssetReviewStatus.PENDING,
-            extractionStrategy: 'TABLE_EXTRACTION',
-            fieldName: field.fieldName,
-            rawValue: field.rawValue,
-            normalizedValue: field.normalizedValue !== undefined ? field.normalizedValue as object : null,
-            confidenceScore: field.confidenceScore ?? null,
-            extractionMethod: field.confidenceScore !== undefined ? ExtractionMethod.TABLE_EXTRACTION : null,
-            sourceRowIndex: candidate.sourceRowIndex,
-            sourceSheetName: candidate.sourceSheetName || null,
-          });
-        }
-      }
+      const fieldsToInsert = this.transformCandidatesToInsertData(documentId, extractionJobId, candidates);
 
       if (fieldsToInsert.length > 0) {
-        await this.extractedAssetFieldRepository.createMany(fieldsToInsert);
-        savedFields = fieldsToInsert.length;
+        savedFields = await this.extractedAssetFieldRepository.bulkInsertWithTransaction(fieldsToInsert);
       }
     } catch (error) {
       for (const candidate of candidates) {
@@ -79,6 +90,48 @@ export class ExtractionPersistenceService {
     return { savedAssets: candidates.length, savedFields, errors };
   }
 
+  private transformCandidatesToInsertData(
+    documentId: string,
+    extractionJobId: string | null,
+    candidates: ExtractedAssetCandidate[],
+  ): BulkInsertFieldData[] {
+    const fieldsToInsert: BulkInsertFieldData[] = [];
+
+    for (const candidate of candidates) {
+      if (!candidate) {
+        continue;
+      }
+
+      const rawData = candidate.rawRowData || candidate.normalizedRowData;
+      if (!rawData || Object.keys(rawData).length === 0) {
+        continue;
+      }
+
+      const assetName = candidate.rawAssetName || `asset_${candidate.sourceRowIndex || 0}`;
+      const sourceRow = typeof candidate.sourceRowIndex === 'number' ? candidate.sourceRowIndex : 0;
+
+      fieldsToInsert.push({
+        documentId: documentId,
+        extractionJobId: extractionJobId || null,
+        rawAssetName: assetName,
+        overallConfidence: candidate.overallConfidence ?? 0.8,
+        reviewStatus: ExtractedAssetReviewStatus.PENDING,
+        extractionStrategy: 'TABLE_EXTRACTION',
+        fieldName: 'row_data',
+        rawValue: candidate.rawRowData ? JSON.stringify(candidate.rawRowData) : JSON.stringify(candidate.normalizedRowData),
+        normalizedValue: candidate.normalizedRowData ? JSON.stringify(candidate.normalizedRowData) : null,
+        confidenceScore: candidate.overallConfidence ?? 0.8,
+        extractionMethod: ExtractionMethod.TABLE_EXTRACTION,
+        sourceRowIndex: sourceRow,
+        sourceSheetName: candidate.sourceSheetName || null,
+        isInferred: false,
+        createdAt: new Date(),
+      });
+    }
+
+    return fieldsToInsert;
+  }
+
   async logError(
     processingJobId: string | null,
     stage: string,
@@ -86,13 +139,31 @@ export class ExtractionPersistenceService {
     message: string,
     rowIndex?: number,
   ): Promise<void> {
-    await this.extractionErrorRepository.create({
-      processingJobId: processingJobId || undefined,
+    this.errorBuffer.push({
+      processingJobId: processingJobId || null,
       errorStage: stage,
       errorCode: code,
       message: message,
       recoverable: false,
+      createdAt: new Date(),
     });
+
+    if (this.errorBuffer.length >= this.ERROR_FLUSH_THRESHOLD) {
+      await this.flushErrors(processingJobId);
+    }
+  }
+
+  private async flushErrors(processingJobId: string | null): Promise<void> {
+    if (this.errorBuffer.length === 0) return;
+
+    const errorsToFlush = this.errorBuffer.slice(0, 500);
+    this.errorBuffer = this.errorBuffer.slice(500);
+
+    try {
+      await this.extractionErrorRepository.bulkInsert(errorsToFlush);
+    } catch (error) {
+      this.errorBuffer.push(...errorsToFlush);
+    }
   }
 
   async checkIdempotency(documentId: string, rowIndex: number): Promise<boolean> {

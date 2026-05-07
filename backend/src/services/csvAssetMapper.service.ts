@@ -42,22 +42,24 @@ export class CsvAssetMapperService {
         rawAssetName = value;
       }
 
-      const fieldCandidate: ExtractedFieldCandidate = {
+      fields.push({
         fieldName: mappedFieldName,
         rawValue: value,
         normalizedValue: this.normalizeValue(mappedFieldName, value),
         confidenceScore: this.calculateConfidence(mappedFieldName, value),
         sourceColumn: columnName,
-      };
-
-      fields.push(fieldCandidate);
+      });
     }
 
     return {
       rawAssetName,
-      fields,
+      fields: [],
       sourceRowIndex: parsedRow.rowIndex,
       overallConfidence: this.calculateOverallConfidence(fields),
+      rawRowData: parsedRow.data,
+      normalizedRowData: Object.fromEntries(
+        fields.map(f => [f.fieldName, f.normalizedValue])
+      ),
     };
   }
 

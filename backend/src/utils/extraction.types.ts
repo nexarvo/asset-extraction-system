@@ -72,17 +72,16 @@ export interface ExtractionJobData {
   readonly jobId: string;
   readonly filename: string;
   readonly buffer: Buffer | string;
-  readonly fileType: 'csv' | 'xlsx' | 'pdf';
+  readonly fileType: 'csv' | 'xlsx' | 'xls' | 'pdf';
 }
 
 export interface ExtractionJobResult {
   readonly jobId: string;
   readonly status: JobStatus;
   readonly filename: string;
-  readonly fileType: 'csv' | 'xlsx' | 'pdf';
+  readonly fileType: 'csv' | 'xlsx' | 'xls' | 'pdf';
   readonly error?: string;
   readonly errorCode?: string;
-  readonly stackTrace?: string;
 }
 
 export interface QueuedJobResponse {
