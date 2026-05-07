@@ -2,12 +2,14 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Worker, Job } from 'bullmq';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
+import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
+import { ProcessingJobRepository } from '../repositories/processing-job.repository';
+import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 import { EXTRACTION_QUEUE_NAME } from '../queues/extraction.queue';
 import { ExtractionJobData, ExtractionJobResult } from '../utils/extraction.types';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import { ProcessingJobStatus } from '../entities/processing-job.entity';
-import { DataSource } from 'typeorm';
 
 const WORKER_CONCURRENCY = 3;
 
@@ -18,7 +20,9 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly logger: AppLoggerService,
     private readonly strategyFactory: ExtractionStrategyFactory,
-    private readonly dataSource: DataSource,
+    private readonly persistenceService: ExtractionPersistenceService,
+    private readonly processingJobRepository: ProcessingJobRepository,
+    private readonly extractionErrorRepository: ExtractionErrorRepository,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
       EXTRACTION_QUEUE_NAME,
@@ -42,16 +46,14 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     this.worker.on('failed', async (job, error) => {
       if (job && job.data?.jobId) {
         await this.setJobError(job.data.jobId, error.message);
-        await this.dataSource.query(
-          `INSERT INTO extraction_errors (id, processing_job_id, error_stage, error_code, message, stack_trace, recoverable, created_at)
-           VALUES (gen_random_uuid(), $1, 'EXTRACTION', 'JOB_FAILED', $2, $3, $4, now())`,
-          [
-            job.data.jobId,
-            error.message,
-            error.stack || null,
-            job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
-          ],
-        );
+        await this.extractionErrorRepository.create({
+          processingJobId: job.data.jobId,
+          errorStage: 'EXTRACTION',
+          errorCode: 'JOB_FAILED',
+          message: error.message,
+          stackTrace: error.stack || undefined,
+          recoverable: job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
+        });
         this.logger.error(
           'job failed',
           error.stack,
@@ -67,27 +69,19 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async markJobCompleted(jobId: string): Promise<void> {
-    await this.dataSource
-      .createQueryBuilder()
-      .update('processing_jobs')
-      .set({ status: ProcessingJobStatus.COMPLETED, completedAt: new Date() })
-      .where('id = :id', { id: jobId })
-      .execute();
+    await this.processingJobRepository.markCompleted(jobId);
   }
 
   private async setJobError(jobId: string, errorMessage: string): Promise<void> {
-    await this.dataSource
-      .createQueryBuilder()
-      .update('processing_jobs')
-      .set({ status: ProcessingJobStatus.FAILED, errorSummary: errorMessage, completedAt: new Date() })
-      .where('id = :id', { id: jobId })
-      .execute();
+    await this.processingJobRepository.setError(jobId, errorMessage);
   }
 
   private async processJob(
     job: Job<ExtractionJobData, ExtractionJobResult>,
   ): Promise<ExtractionJobResult> {
     const { jobId, filename, buffer, fileType } = job.data;
+
+    const bufferData = typeof buffer === 'string' ? Buffer.from(buffer, 'base64') : buffer;
 
     this.logger.log(
       'processing job',
@@ -100,12 +94,7 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       },
     );
 
-    await this.dataSource
-      .createQueryBuilder()
-      .update('processing_jobs')
-      .set({ status: ProcessingJobStatus.RUNNING, startedAt: new Date() })
-      .where('id = :id', { id: jobId })
-      .execute();
+    await this.processingJobRepository.updateStatus(jobId, ProcessingJobStatus.RUNNING);
 
     try {
       const strategy = this.strategyFactory.getStrategy(fileType);
@@ -117,38 +106,55 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      const result = await strategy.extract(buffer, filename);
+      this.logger.log('extracting with strategy', 'ExtractionWorker', { fileType, strategy: strategy.constructor.name });
 
-      const queryRunner = this.dataSource.createQueryRunner();
-      await queryRunner.connect();
-      try {
-        await queryRunner.startTransaction();
+      const result = await strategy.extract(bufferData, filename);
 
-        const extractionResult = await queryRunner.query(
-          `INSERT INTO "extracted_assets" (id, document_id, extraction_strategy, raw_asset_name, raw_payload, overall_confidence, review_status, created_at)
-           VALUES (gen_random_uuid(), (SELECT document_id FROM processing_jobs WHERE id = $1), $2, $3, $4, $5, 'pending', now())
-           RETURNING id`,
-          [jobId, result.strategy || fileType, filename, JSON.stringify(result.metadata), null],
+      this.logger.log('extraction completed', 'ExtractionWorker', {
+        jobId,
+        recordCount: result.records?.length || 0,
+        metadata: result.metadata,
+      });
+
+      const processingJob = await this.processingJobRepository.findById(jobId);
+
+      if (!processingJob || !processingJob.documentId) {
+        throw new ApplicationError(ErrorCode.PersistenceFailed, undefined, {
+          jobId,
+          reason: 'No document associated with processing job',
+        });
+      }
+
+      const candidates = this.mapToAssetCandidates(result.records, processingJob.documentId);
+
+      if (candidates.length > 0) {
+        const persistenceResult = await this.persistenceService.persistBatch(
+          processingJob.documentId,
+          jobId,
+          candidates,
+          100,
         );
 
-        const assetId = extractionResult[0]?.id;
+        this.logger.log(
+          'batch persistence completed',
+          'ExtractionWorker',
+          {
+            jobId,
+            savedAssets: persistenceResult.savedAssets,
+            savedFields: persistenceResult.savedFields,
+            errors: persistenceResult.errors.length,
+          },
+        );
 
-        if (result.records && result.records.length > 0) {
-          for (const record of result.records) {
-            await queryRunner.query(
-              `INSERT INTO "extracted_asset_fields" (id, extracted_asset_id, field_name, raw_value, normalized_value, confidence_score, extraction_method, created_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'LLM_EXTRACTION', now())`,
-              [assetId, 'asset_data', typeof record === 'object' ? JSON.stringify(record) : String(record), JSON.stringify(record), null],
-            );
-          }
+        for (const error of persistenceResult.errors) {
+          await this.persistenceService.logError(
+            jobId,
+            'VALIDATION',
+            'CSV_ROW_INVALID',
+            error.reason,
+            error.rowIndex,
+          );
         }
-
-        await queryRunner.commitTransaction();
-      } catch (error) {
-        await queryRunner.rollbackTransaction();
-        throw error;
-      } finally {
-        await queryRunner.release();
       }
 
       return {
@@ -158,6 +164,18 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         fileType,
       };
     } catch (error) {
+      this.logger.error(
+        'extraction error',
+        error instanceof Error ? error.stack : undefined,
+        'ExtractionWorker',
+        {
+          jobId,
+          filename,
+          error: error instanceof Error ? error.message : String(error),
+          cause: error instanceof ApplicationError ? (error as any).details : undefined,
+        },
+      );
+
       const isRetryable =
         error instanceof Error &&
         !(
@@ -167,21 +185,29 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         );
 
       if (!isRetryable) {
-        await this.dataSource
-          .createQueryBuilder()
-          .update('processing_jobs')
-          .set({ status: ProcessingJobStatus.FAILED, errorSummary: (error as Error).message, completedAt: new Date() })
-          .where('id = :id', { id: jobId })
-          .execute();
-        this.logger.log(
-          'non-retryable error',
-          'ExtractionWorker',
-          { jobId, filename, error: (error as Error).message },
-        );
+        await this.processingJobRepository.setError(jobId, (error as Error).message);
       }
 
       throw error;
     }
+  }
+
+  private mapToAssetCandidates(
+    records: Record<string, unknown>[],
+    documentId: string,
+  ): import('../utils/csv-stream.types').ExtractedAssetCandidate[] {
+    return records.map((record, index) => ({
+      rawAssetName: String(record['asset_name'] || record['name'] || `asset_${index + 1}`),
+      fields: Object.entries(record).map(([key, value]) => ({
+        fieldName: key,
+        rawValue: value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : null,
+        normalizedValue: value,
+        confidenceScore: 0.8,
+        sourceColumn: key,
+      })),
+      sourceRowIndex: index + 1,
+      overallConfidence: 0.8,
+    }));
   }
 
   private getWorkerOptions() {

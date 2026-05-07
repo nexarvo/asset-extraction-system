@@ -71,7 +71,7 @@ export type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'retryin
 export interface ExtractionJobData {
   readonly jobId: string;
   readonly filename: string;
-  readonly buffer: Buffer;
+  readonly buffer: Buffer | string;
   readonly fileType: 'csv' | 'xlsx' | 'pdf';
 }
 

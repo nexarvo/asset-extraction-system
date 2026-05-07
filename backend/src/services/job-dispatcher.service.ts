@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { DataSource } from 'typeorm';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
@@ -13,7 +12,10 @@ import {
   QueuedJobResponse,
 } from '../utils/extraction.types';
 import { getFileExtension } from '../utils/file.utils';
-import { ProcessingJobStatus } from '../entities/processing-job.entity';
+import { ProcessingJobRepository } from '../repositories/processing-job.repository';
+import { DocumentRepository } from '../repositories/document.repository';
+import { ProcessingJobStatus, ProcessingJobType } from '../entities/processing-job.entity';
+import { DocumentIngestionStatus } from '../entities/document.entity';
 
 @Injectable()
 export class JobDispatcherService {
@@ -21,7 +23,8 @@ export class JobDispatcherService {
 
   constructor(
     private readonly logger: AppLoggerService,
-    private readonly dataSource: DataSource,
+    private readonly processingJobRepository: ProcessingJobRepository,
+    private readonly documentRepository: DocumentRepository,
   ) {}
 
   private getQueue(): Queue<ExtractionJobData> {
@@ -45,19 +48,24 @@ export class JobDispatcherService {
         const extension = getFileExtension(file.filename);
         const fileType = extension as 'csv' | 'xlsx' | 'pdf';
 
-        const jobId = await this.dataSource.query(
-          `INSERT INTO processing_jobs (id, job_type, status, attempt_count, created_at)
-           VALUES (gen_random_uuid(), 'EXTRACTION', $1, 0, now())
-           RETURNING id`,
-          [ProcessingJobStatus.QUEUED],
-        );
+        const document = await this.documentRepository.create({
+          originalFileName: file.filename,
+          storageKey: `uploads/${Date.now()}-${file.filename}`,
+          mimeType: this.getMimeType(fileType),
+          fileSize: file.buffer.length,
+          ingestionStatus: DocumentIngestionStatus.PROCESSING,
+        });
 
-        const insertedJobId = jobId[0]?.id;
+        const processingJob = await this.processingJobRepository.create({
+          documentId: document.id,
+          jobType: ProcessingJobType.EXTRACTION,
+          status: ProcessingJobStatus.QUEUED,
+        });
 
         await queue.add('extract', {
-          jobId: insertedJobId,
+          jobId: processingJob.id,
           filename: file.filename,
-          buffer: file.buffer,
+          buffer: file.buffer.toString('base64'),
           fileType,
         });
 
@@ -65,14 +73,14 @@ export class JobDispatcherService {
           'job dispatched',
           'JobDispatcherService',
           {
-            jobId: insertedJobId,
+            jobId: processingJob.id,
             filename: file.filename,
             fileType,
           },
         );
 
         jobs.push({
-          jobId: insertedJobId,
+          jobId: processingJob.id,
           filename: file.filename,
           status: 'waiting',
         });
@@ -97,12 +105,7 @@ export class JobDispatcherService {
 
   async getJobStatus(jobId: string): Promise<QueuedJobResponse | null> {
     try {
-      const result = await this.dataSource.query(
-        `SELECT id, document_id, status FROM processing_jobs WHERE id = $1`,
-        [jobId],
-      );
-
-      const job = result[0];
+      const job = await this.processingJobRepository.findById(jobId);
 
       if (!job) {
         return null;
@@ -111,7 +114,7 @@ export class JobDispatcherService {
       return {
         jobId: job.id,
         filename: '',
-        status: job.status,
+        status: job.status as 'waiting' | 'active' | 'completed' | 'failed' | 'retrying',
       };
     } catch (error) {
       this.logger.error(
@@ -131,5 +134,14 @@ export class JobDispatcherService {
     if (this.queue) {
       await this.queue.close();
     }
+  }
+
+  private getMimeType(fileType: string): string {
+    const mimeTypes: Record<string, string> = {
+      csv: 'text/csv',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pdf: 'application/pdf',
+    };
+    return mimeTypes[fileType] || 'application/octet-stream';
   }
 }

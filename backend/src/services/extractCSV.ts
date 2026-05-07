@@ -6,24 +6,23 @@ import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import {
   AssetFileInput,
-  ExtractedAssetRecord,
   ExtractionResult,
-  RawCsvRow,
   SupportedFileType,
 } from '../utils/extraction.types';
-import { CsvRowValidator, normalizeCsvHeaders } from '../utils/csv.utils';
+import { normalizeCsvHeaders } from '../utils/csv.utils';
 import { createExtractionMetadata } from '../utils/file.utils';
 import { CsvAssetMapperService } from './csvAssetMapper.service';
+import { CsvRowValidator } from './csv-row-validator';
+import { RawCsvRow, ParsedCsvRow, ExtractedAssetCandidate } from '../utils/csv-stream.types';
 
 type CsvParserRow = Record<string, string | undefined>;
 
 @Injectable()
 export class CsvExtractionService {
-  private readonly rowValidator = new CsvRowValidator();
-
   constructor(
     private readonly logger: AppLoggerService,
     private readonly csvAssetMapperService: CsvAssetMapperService,
+    private readonly rowValidator: CsvRowValidator,
   ) {}
 
   async extractDataFromCsv(input: AssetFileInput): Promise<ExtractionResult> {
@@ -31,13 +30,13 @@ export class CsvExtractionService {
       this.logger.log('starting csv extraction', 'CsvExtractionService', {
         filename: input.filename,
       });
-      const { records, warnings } = await this.processCsvStream(input);
+      const { candidates, warnings } = await this.processCsvStream(input);
 
       return {
         sourceFile: input.filename,
         fileType: SupportedFileType.Csv,
-        records,
-        metadata: createExtractionMetadata(records.length, warnings),
+        records: candidates as unknown as Record<string, unknown>[],
+        metadata: createExtractionMetadata(candidates.length, warnings),
       };
     } catch (error) {
       if (error instanceof ApplicationError) {
@@ -51,27 +50,26 @@ export class CsvExtractionService {
     }
   }
 
-  private async processCsvStream(
+  async processCsvStream(
     input: AssetFileInput,
-  ): Promise<{ records: ExtractedAssetRecord[]; warnings: string[] }> {
+  ): Promise<{ candidates: ExtractedAssetCandidate[]; warnings: string[] }> {
     return new Promise((resolve, reject) => {
-      const records: ExtractedAssetRecord[] = [];
+      const candidates: ExtractedAssetCandidate[] = [];
       const warnings: string[] = [];
       let headers: string[] = [];
-      let rowIndex = 1;
+      let rowIndex = 0;
+      let isFirstRow = true;
 
       const parser = csvParser({
         strict: false,
-        mapHeaders: ({ header }) => {
-          headers = normalizeCsvHeaders([...headers, header]);
-          return headers[headers.length - 1];
-        },
         mapValues: ({ value }) =>
           typeof value === 'string' ? value.trim() : String(value ?? '').trim(),
       });
 
       parser.on('headers', (parsedHeaders: string[]) => {
-        headers = normalizeCsvHeaders(parsedHeaders);
+        const result = normalizeCsvHeaders(parsedHeaders);
+        headers = result;
+        this.rowValidator.setHeaderCount(headers.length);
         this.logger.log('csv headers parsed', 'CsvExtractionService', {
           filename: input.filename,
           headers,
@@ -79,28 +77,35 @@ export class CsvExtractionService {
       });
 
       parser.on('data', (data: CsvParserRow) => {
-        rowIndex += 1;
+        rowIndex++;
+        if (isFirstRow) {
+          isFirstRow = false;
+          return;
+        }
+
         try {
           const rawRow = this.toRawCsvRow(data, headers, rowIndex);
-          const failures = this.rowValidator.validate(rawRow);
+          const validationResult = this.rowValidator.validateRow(rawRow);
 
-          if (failures.length > 0) {
-            failures.forEach((failure) => {
-              const warning = `row ${failure.rowIndex}: ${failure.reason}`;
+          if (!validationResult.isValid) {
+            validationResult.errors.forEach((error) => {
+              const warning = `row ${error.rowIndex}: ${error.reason}`;
               warnings.push(warning);
               this.logger.warn(
                 'invalid csv row skipped',
                 'CsvExtractionService',
                 {
                   filename: input.filename,
-                  ...failure,
+                  ...error,
                 },
               );
             });
             return;
           }
 
-          records.push(this.csvAssetMapperService.mapRow(rawRow));
+          const parsedRow = this.rowValidator.parseRow(rawRow);
+          const candidate = this.csvAssetMapperService.mapRow(parsedRow);
+          candidates.push(candidate);
         } catch (error) {
           const warning = `row ${rowIndex}: ${error instanceof Error ? error.message : String(error)}`;
           warnings.push(warning);
@@ -129,10 +134,10 @@ export class CsvExtractionService {
       parser.on('end', () => {
         this.logger.log('csv extraction completed', 'CsvExtractionService', {
           filename: input.filename,
-          recordCount: records.length,
+          recordCount: candidates.length,
           skippedRows: warnings.length,
         });
-        resolve({ records, warnings });
+        resolve({ candidates, warnings });
       });
 
       Readable.from(input.buffer).pipe(parser);
@@ -144,12 +149,10 @@ export class CsvExtractionService {
     headers: string[],
     rowIndex: number,
   ): RawCsvRow {
-    const extraKeys = Object.keys(data).filter((key) => !headers.includes(key));
     return {
       headers,
       rowIndex,
       values: headers.map((header) => data[header] ?? ''),
-      extraValues: extraKeys.map((key) => data[key] ?? ''),
       raw: Object.fromEntries(
         Object.entries(data).map(([key, value]) => [key, value ?? '']),
       ),

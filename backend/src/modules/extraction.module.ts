@@ -18,6 +18,8 @@ import { ExtractionRepository } from '../repositories/extraction.repository';
 import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
+import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
+import { CsvRowValidator } from '../services/csv-row-validator';
 import { DocumentRepository } from '../repositories/document.repository';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { DocumentPageRepository } from '../repositories/document-page.repository';
@@ -93,6 +95,8 @@ import {
     CsvAssetMapperService,
     XlsxAssetMapperService,
     PaddleOcrService,
+    ExtractionPersistenceService,
+    CsvRowValidator,
     DocumentRepository,
     ProcessingJobRepository,
     DocumentPageRepository,
