@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Table2 } from 'lucide-react';
 import { extractionApi } from '../apis/extraction.api';
-import { setJobs } from '../store/slices/jobs.slice';
+import { createSession, addJobsToSession, setActiveSession } from '../store/slices/jobs.slice';
 import { ROUTES } from '../constants/routes';
 
 const formatFileSize = (bytes: number): string => {
@@ -73,7 +73,10 @@ export const UploadPage = () => {
         progress: 0,
       }));
 
-      dispatch(setJobs(jobs));
+      const sessionId = `session-${Date.now()}`;
+      dispatch(createSession({ id: sessionId, name: 'Untitled' }));
+      dispatch(addJobsToSession({ sessionId, jobs }));
+      dispatch(setActiveSession(sessionId));
       navigate(ROUTES.DOCUMENTS);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed');
