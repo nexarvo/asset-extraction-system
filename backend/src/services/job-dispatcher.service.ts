@@ -11,13 +11,18 @@ import {
   ExtractionJobData,
   QueuedJobResponse,
 } from '../utils/extraction.types';
-import { getSupportedFileType, getFileExtension } from '../utils/file.utils';
+import { getFileExtension } from '../utils/file.utils';
+import { ExtractionJobRepository } from '../repositories/extraction-job.repository';
+import { ExtractionJobStatus } from '../entities/extraction-job.entity';
 
 @Injectable()
 export class JobDispatcherService {
   private queue: Queue<ExtractionJobData> | null = null;
 
-  constructor(private readonly logger: AppLoggerService) {}
+  constructor(
+    private readonly logger: AppLoggerService,
+    private readonly jobRepository: ExtractionJobRepository,
+  ) {}
 
   private getQueue(): Queue<ExtractionJobData> {
     if (!this.queue) {
@@ -40,8 +45,14 @@ export class JobDispatcherService {
         const extension = getFileExtension(file.filename);
         const fileType = extension as 'csv' | 'xlsx' | 'pdf';
 
-        const job = await queue.add('extract', {
-          jobId: '',
+        const dbJob = await this.jobRepository.create({
+          fileName: file.filename,
+          fileType,
+          status: ExtractionJobStatus.WAITING,
+        });
+
+        await queue.add('extract', {
+          jobId: dbJob.id,
           filename: file.filename,
           buffer: file.buffer,
           fileType,
@@ -51,14 +62,14 @@ export class JobDispatcherService {
           'job dispatched',
           'JobDispatcherService',
           {
-            jobId: job.id,
+            jobId: dbJob.id,
             filename: file.filename,
             fileType,
           },
         );
 
         jobs.push({
-          jobId: job.id!,
+          jobId: dbJob.id,
           filename: file.filename,
           status: 'waiting',
         });
@@ -83,34 +94,16 @@ export class JobDispatcherService {
 
   async getJobStatus(jobId: string): Promise<QueuedJobResponse | null> {
     try {
-      const queue = this.getQueue();
-      const job = await queue.getJob(jobId);
+      const job = await this.jobRepository.findById(jobId);
 
       if (!job) {
         return null;
       }
 
-      let status: 'waiting' | 'active' | 'completed' | 'failed' | 'retrying' = 'waiting';
-
-      const isCompleted = await job.isCompleted();
-      const isFailed = await job.isFailed();
-      const isActive = await job.isActive();
-      const isWaiting = await job.isWaiting();
-
-      if (isCompleted) {
-        status = 'completed';
-      } else if (isFailed) {
-        status = 'failed';
-      } else if (isActive) {
-        status = 'active';
-      } else if (isWaiting) {
-        status = 'waiting';
-      }
-
       return {
-        jobId: job.id!,
-        filename: job.data.filename,
-        status,
+        jobId: job.id,
+        filename: job.fileName,
+        status: job.status,
       };
     } catch (error) {
       this.logger.error(

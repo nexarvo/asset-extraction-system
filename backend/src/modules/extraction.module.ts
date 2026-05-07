@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppLoggerService } from '../core/app-logger.service';
 import { CsvExtractionService } from '../services/extractCSV';
 import { XlsxExtractionService } from '../services/extractXLSX';
@@ -16,8 +17,26 @@ import { ExtractionRepository } from '../repositories/extraction.repository';
 import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
+import {
+  ExtractionJobEntity,
+  ExtractionResultEntity,
+  ExtractedRecordEntity,
+  ExtractionErrorEntity,
+} from '../entities';
+import { ExtractionJobRepository } from '../repositories/extraction-job.repository';
+import { ExtractionResultRepository } from '../repositories/extraction-result.repository';
+import { ExtractedRecordRepository } from '../repositories/extracted-record.repository';
+import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 
 @Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      ExtractionJobEntity,
+      ExtractionResultEntity,
+      ExtractedRecordEntity,
+      ExtractionErrorEntity,
+    ]),
+  ],
   controllers: [ExtractionController],
   providers: [
     AppLoggerService,
@@ -36,6 +55,10 @@ import { PaddleOcrService } from '../services/paddleOCR';
     CsvAssetMapperService,
     XlsxAssetMapperService,
     PaddleOcrService,
+    ExtractionJobRepository,
+    ExtractionResultRepository,
+    ExtractedRecordRepository,
+    ExtractionErrorRepository,
   ],
 })
 export class ExtractionModule {}
