@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DatabaseModule } from '../core/database/database.module';
 import { AppLoggerService } from '../core/app-logger.service';
 import { CsvExtractionService } from '../services/extractCSV';
 import { XlsxExtractionService } from '../services/extractXLSX';
@@ -38,6 +39,7 @@ import {
 
 @Module({
   imports: [
+    DatabaseModule,
     TypeOrmModule.forFeature([
       DocumentEntity,
       ProcessingJobEntity,

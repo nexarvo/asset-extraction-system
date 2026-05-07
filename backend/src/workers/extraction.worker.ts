@@ -2,7 +2,6 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Worker, Job } from 'bullmq';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
-import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 import { EXTRACTION_QUEUE_NAME } from '../queues/extraction.queue';
 import { ExtractionJobData, ExtractionJobResult } from '../utils/extraction.types';
 import { ApplicationError } from '../error-codes/application-error';
@@ -19,7 +18,6 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly logger: AppLoggerService,
     private readonly strategyFactory: ExtractionStrategyFactory,
-    private readonly errorRepository: ExtractionErrorRepository,
     private readonly dataSource: DataSource,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
@@ -44,14 +42,16 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     this.worker.on('failed', async (job, error) => {
       if (job && job.data?.jobId) {
         await this.setJobError(job.data.jobId, error.message);
-        await this.errorRepository.create({
-          processingJobId: job.data.jobId,
-          errorStage: 'EXTRACTION',
-          errorCode: 'JOB_FAILED',
-          message: error.message,
-          stackTrace: error.stack,
-          recoverable: job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
-        });
+        await this.dataSource.query(
+          `INSERT INTO extraction_errors (id, processing_job_id, error_stage, error_code, message, stack_trace, recoverable, created_at)
+           VALUES (gen_random_uuid(), $1, 'EXTRACTION', 'JOB_FAILED', $2, $3, $4, now())`,
+          [
+            job.data.jobId,
+            error.message,
+            error.stack || null,
+            job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
+          ],
+        );
         this.logger.error(
           'job failed',
           error.stack,
