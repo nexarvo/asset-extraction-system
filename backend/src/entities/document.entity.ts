@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { ProcessingJobEntity } from './processing-job.entity';
 import { DocumentPageEntity } from './document-page.entity';
-import { ExtractedAssetEntity } from './extracted-asset.entity';
+import { ExtractedAssetFieldEntity } from './extracted-asset-field.entity';
 
 export enum DocumentIngestionStatus {
   UPLOADED = 'uploaded',
@@ -61,6 +61,6 @@ export class DocumentEntity {
   @OneToMany(() => DocumentPageEntity, (page) => page.document)
   pages!: DocumentPageEntity[];
 
-  @OneToMany(() => ExtractedAssetEntity, (asset) => asset.document)
-  extractedAssets!: ExtractedAssetEntity[];
+  @OneToMany(() => ExtractedAssetFieldEntity, (field) => field.documentId)
+  extractedAssets!: ExtractedAssetFieldEntity[];
 }

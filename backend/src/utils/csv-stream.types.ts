@@ -22,6 +22,7 @@ export interface ExtractedAssetCandidate {
   rawAssetName?: string;
   fields: ExtractedFieldCandidate[];
   sourceRowIndex: number;
+  sourceSheetName?: string;
   overallConfidence?: number;
 }
 
@@ -45,4 +46,30 @@ export interface BatchPersistenceResult {
   savedAssets: number;
   savedFields: number;
   errors: CsvRowError[];
+}
+
+export interface RawXlsxRow {
+  sheetName: string;
+  rowIndex: number;
+  headers: string[];
+  values: (string | number | null)[];
+  raw: Record<string, unknown>;
+}
+
+export interface ParsedXlsxRow {
+  sheetName: string;
+  rowIndex: number;
+  data: Record<string, string | number | null>;
+}
+
+export interface XlsxRowError {
+  sheetName: string;
+  rowIndex: number;
+  reason: string;
+  rawData?: Record<string, unknown>;
+}
+
+export interface XlsxValidationResult {
+  isValid: boolean;
+  errors: XlsxRowError[];
 }

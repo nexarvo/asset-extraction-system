@@ -24,8 +24,8 @@ export class ExtractedAssetFieldRepository {
     return this.repository.findOne({ where: { id } as FindOptionsWhere<ExtractedAssetFieldEntity> });
   }
 
-  async findByExtractedAssetId(extractedAssetId: string): Promise<ExtractedAssetFieldEntity[]> {
-    return this.repository.find({ where: { extractedAssetId } as FindOptionsWhere<ExtractedAssetFieldEntity> });
+  async findByDocumentId(documentId: string): Promise<ExtractedAssetFieldEntity[]> {
+    return this.repository.find({ where: { documentId } as FindOptionsWhere<ExtractedAssetFieldEntity> });
   }
 
   async findByFieldName(fieldName: string): Promise<ExtractedAssetFieldEntity[]> {
@@ -44,7 +44,7 @@ export class ExtractedAssetFieldRepository {
     await this.repository.delete(id);
   }
 
-  async deleteByExtractedAssetId(extractedAssetId: string): Promise<void> {
-    await this.repository.delete({ extractedAssetId } as FindOptionsWhere<ExtractedAssetFieldEntity>);
+  async deleteByDocumentId(documentId: string): Promise<void> {
+    await this.repository.delete({ documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>);
   }
 }

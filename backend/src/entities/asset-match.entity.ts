@@ -7,7 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { ExtractedAssetEntity } from './extracted-asset.entity';
+import { ExtractedAssetFieldEntity } from './extracted-asset-field.entity';
 import { CanonicalAssetEntity } from './canonical-asset.entity';
 
 export enum AssetMatchDecision {
@@ -25,11 +25,11 @@ export class AssetMatchEntity {
   @Column({ name: 'extracted_asset_id', type: 'uuid' })
   extractedAssetId!: string;
 
-  @ManyToOne(() => ExtractedAssetEntity, {
+  @ManyToOne(() => ExtractedAssetFieldEntity, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'extracted_asset_id' })
-  extractedAsset!: ExtractedAssetEntity;
+  extractedAsset!: ExtractedAssetFieldEntity;
 
   @Column({ name: 'canonical_asset_id', type: 'uuid' })
   canonicalAssetId!: string;

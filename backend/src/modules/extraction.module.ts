@@ -20,10 +20,10 @@ import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
 import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
 import { CsvRowValidator } from '../services/csv-row-validator';
+import { XlsxRowValidator } from '../services/xlsx-row-validator';
 import { DocumentRepository } from '../repositories/document.repository';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { DocumentPageRepository } from '../repositories/document-page.repository';
-import { ExtractedAssetRepository } from '../repositories/extracted-asset.repository';
 import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
 import { CanonicalAssetRepository } from '../repositories/canonical-asset.repository';
 import { CanonicalAssetFieldRepository } from '../repositories/canonical-asset-field.repository';
@@ -40,7 +40,6 @@ import {
   DocumentEntity,
   ProcessingJobEntity,
   DocumentPageEntity,
-  ExtractedAssetEntity,
   ExtractedAssetFieldEntity,
   CanonicalAssetEntity,
   CanonicalAssetFieldEntity,
@@ -62,7 +61,6 @@ import {
       DocumentEntity,
       ProcessingJobEntity,
       DocumentPageEntity,
-      ExtractedAssetEntity,
       ExtractedAssetFieldEntity,
       CanonicalAssetEntity,
       CanonicalAssetFieldEntity,
@@ -97,10 +95,10 @@ import {
     PaddleOcrService,
     ExtractionPersistenceService,
     CsvRowValidator,
+    XlsxRowValidator,
     DocumentRepository,
     ProcessingJobRepository,
     DocumentPageRepository,
-    ExtractedAssetRepository,
     ExtractedAssetFieldRepository,
     CanonicalAssetRepository,
     CanonicalAssetFieldRepository,

@@ -5,35 +5,25 @@ import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import {
   AssetFileInput,
-  ExtractedAssetRecord,
   ExtractionResult,
-  RawXlsxCellValue,
-  RawXlsxRow,
   SupportedFileType,
+  RawXlsxCellValue,
 } from '../utils/extraction.types';
 import {
   createExtractionMetadata,
   getSupportedFileType,
 } from '../utils/file.utils';
-import { normalizeXlsxHeaders, XlsxRowValidator } from '../utils/xlsx.utils';
+import { normalizeXlsxHeaders } from '../utils/xlsx.utils';
 import { XlsxAssetMapperService } from './xlsxAssetMapper.service';
-
-interface RowAnalysis {
-  rowNumber: number;
-  values: RawXlsxCellValue[];
-  nonEmptyCount: number;
-  stringCount: number;
-  numericCount: number;
-  dateCount: number;
-}
+import { XlsxRowValidator } from './xlsx-row-validator';
+import { RawXlsxRow, ExtractedAssetCandidate } from '../utils/csv-stream.types';
 
 @Injectable()
 export class XlsxExtractionService {
-  private readonly rowValidator = new XlsxRowValidator();
-
   constructor(
     private readonly logger: AppLoggerService,
     private readonly xlsxAssetMapperService: XlsxAssetMapperService,
+    private readonly rowValidator: XlsxRowValidator,
   ) {}
 
   async extractDataFromXlsx(input: AssetFileInput): Promise<ExtractionResult> {
@@ -44,7 +34,7 @@ export class XlsxExtractionService {
         { filename: input.filename },
       );
       const workbook = this.readWorkbook(input.buffer);
-      const records = this.extractWorkbookRecords(workbook, input.filename);
+      const result = await this.processWorkbook(workbook, input.filename);
       const fileType = getSupportedFileType(input);
 
       return {
@@ -53,8 +43,8 @@ export class XlsxExtractionService {
           fileType === SupportedFileType.Xls
             ? SupportedFileType.Xls
             : SupportedFileType.Xlsx,
-        records,
-        metadata: createExtractionMetadata(records.length),
+        records: result.candidates as unknown as Record<string, unknown>[],
+        metadata: createExtractionMetadata(result.candidates.length, result.warnings),
       };
     } catch (error) {
       if (error instanceof ApplicationError) {
@@ -68,23 +58,28 @@ export class XlsxExtractionService {
     }
   }
 
-  private readWorkbook(buffer: Buffer): XLSX.WorkBook {
-    return XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  }
-
-  private extractWorkbookRecords(
+  async processWorkbook(
     workbook: XLSX.WorkBook,
     filename: string,
-  ): ExtractedAssetRecord[] {
-    try {
-      const records: ExtractedAssetRecord[] = [];
+  ): Promise<{ candidates: ExtractedAssetCandidate[]; warnings: string[] }> {
+    const candidates: ExtractedAssetCandidate[] = [];
+    const warnings: string[] = [];
 
-      workbook.SheetNames.forEach((sheetName) => {
+    try {
+      for (const sheetName of workbook.SheetNames) {
         const worksheet = workbook.Sheets[sheetName];
-        this.extractSheetRecords(worksheet, sheetName, filename, records);
+        const sheetResult = this.processSheet(worksheet, sheetName, filename);
+        candidates.push(...sheetResult.candidates);
+        warnings.push(...sheetResult.warnings);
+      }
+
+      this.logger.log('spreadsheet extraction completed', 'XlsxExtractionService', {
+        filename,
+        recordCount: candidates.length,
+        skippedRows: warnings.length,
       });
 
-      return records;
+      return { candidates, warnings };
     } catch (error) {
       throw new ApplicationError(ErrorCode.XlsxWorkbookFailure, undefined, {
         filename,
@@ -93,22 +88,34 @@ export class XlsxExtractionService {
     }
   }
 
-  private extractSheetRecords(
+  private processSheet(
     worksheet: XLSX.WorkSheet | undefined,
     sheetName: string,
     filename: string,
-    records: ExtractedAssetRecord[],
-  ): void {
+  ): { candidates: ExtractedAssetCandidate[]; warnings: string[] } {
+    const candidates: ExtractedAssetCandidate[] = [];
+    const warnings: string[] = [];
+
     if (!worksheet?.['!ref']) {
       this.logger.warn(
         'empty spreadsheet sheet skipped',
         'XlsxExtractionService',
         { filename, sheetName },
       );
-      return;
+      return { candidates, warnings };
     }
 
     const range = XLSX.utils.decode_range(worksheet['!ref']);
+    const totalRows = range.e.r - range.s.r + 1;
+    
+    this.logger.log('sheet processing started', 'XlsxExtractionService', {
+      filename,
+      sheetName,
+      totalRows,
+      rangeStart: range.s.r,
+      rangeEnd: range.e.r,
+    });
+
     const headerRowNumber = this.detectHeaderRowNumber(worksheet, range);
 
     if (headerRowNumber === null) {
@@ -117,7 +124,7 @@ export class XlsxExtractionService {
         'XlsxExtractionService',
         { filename, sheetName },
       );
-      return;
+      return { candidates, warnings };
     }
 
     const headerCells = this.readRowValues(
@@ -128,18 +135,26 @@ export class XlsxExtractionService {
     );
     const headerLength = this.findLastNonEmptyIndex(headerCells) + 1;
     const headers = normalizeXlsxHeaders(headerCells.slice(0, headerLength));
+    this.rowValidator.setHeaderCount(headers.length);
+
     this.logger.log('spreadsheet headers parsed', 'XlsxExtractionService', {
       filename,
       sheetName,
       headerRowIndex: headerRowNumber + 1,
-      headers,
+      headerCount: headers.length,
+      headerLength,
     });
+
+    let processedRows = 0;
+    let consecutiveEmptyRows = 0;
+    const MAX_CONSECUTIVE_EMPTY_ROWS = 100;
 
     for (
       let rowNumber = headerRowNumber + 1;
       rowNumber <= range.e.r;
       rowNumber += 1
     ) {
+      processedRows++;
       try {
         const values = this.readRowValues(
           worksheet,
@@ -147,19 +162,30 @@ export class XlsxExtractionService {
           range.s.c,
           range.s.c + headerLength - 1,
         );
-        const extraValues = this.readRowValues(
-          worksheet,
-          rowNumber,
-          range.s.c + headerLength,
-          range.e.c,
-        );
+
         const rawRow: RawXlsxRow = {
           sheetName,
           rowIndex: rowNumber + 1,
           headers,
           values,
-          extraValues,
+          raw: this.valuesToRecord(headers, values),
         };
+
+        const isEmptyRow = values.every((v) => this.isEmpty(v));
+        if (isEmptyRow) {
+          consecutiveEmptyRows++;
+          if (consecutiveEmptyRows >= MAX_CONSECUTIVE_EMPTY_ROWS) {
+            this.logger.log(
+              'stopping due to consecutive empty rows',
+              'XlsxExtractionService',
+              { filename, sheetName, consecutiveEmptyRows, processedRows },
+            );
+            break;
+          }
+          continue;
+        } else {
+          consecutiveEmptyRows = 0;
+        }
 
         if (this.isTrailingNoteRow(rawRow)) {
           this.logger.log(
@@ -174,24 +200,30 @@ export class XlsxExtractionService {
           continue;
         }
 
-        const failures = this.rowValidator.validate(rawRow);
+        const validationResult = this.rowValidator.validateRow(rawRow);
 
-        if (failures.length > 0) {
-          failures.forEach((failure) => {
+        if (!validationResult.isValid) {
+          validationResult.errors.forEach((error) => {
+            const warning = `sheet ${error.sheetName}, row ${error.rowIndex}: ${error.reason}`;
+            warnings.push(warning);
             this.logger.warn(
               'invalid spreadsheet row skipped',
               'XlsxExtractionService',
               {
                 filename,
-                ...failure,
+                ...error,
               },
             );
           });
           continue;
         }
 
-        records.push(this.xlsxAssetMapperService.mapRow(rawRow));
+        const parsedRow = this.rowValidator.parseRow(rawRow);
+        const candidate = this.xlsxAssetMapperService.mapRow(parsedRow);
+        candidates.push(candidate);
       } catch (error) {
+        const warning = `sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`;
+        warnings.push(warning);
         this.logger.warn(
           'spreadsheet row processing failed',
           'XlsxExtractionService',
@@ -204,6 +236,27 @@ export class XlsxExtractionService {
         );
       }
     }
+
+    this.logger.log('sheet processing completed', 'XlsxExtractionService', {
+      filename,
+      sheetName,
+      processedRows,
+      candidatesCount: candidates.length,
+    });
+
+    return { candidates, warnings };
+  }
+
+  private readWorkbook(buffer: Buffer): XLSX.WorkBook {
+    return XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  }
+
+  private valuesToRecord(headers: string[], values: (string | number | null)[]): Record<string, unknown> {
+    const record: Record<string, unknown> = {};
+    for (let i = 0; i < headers.length; i++) {
+      record[headers[i]] = values[i] ?? null;
+    }
+    return record;
   }
 
   private detectHeaderRowNumber(
@@ -238,16 +291,11 @@ export class XlsxExtractionService {
     range: XLSX.Range,
     startRow: number,
     endRow: number,
-  ): RowAnalysis[] {
-    const rows: RowAnalysis[] = [];
+  ): { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number; stringCount: number; numericCount: number; dateCount: number }[] {
+    const rows: { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number; stringCount: number; numericCount: number; dateCount: number }[] = [];
 
     for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
-      const values = this.readRowValues(
-        worksheet,
-        rowNumber,
-        range.s.c,
-        range.e.c,
-      );
+      const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.e.c);
       const nonEmpty = values.filter((v) => !this.isEmpty(v));
 
       rows.push({
@@ -256,19 +304,16 @@ export class XlsxExtractionService {
         nonEmptyCount: nonEmpty.length,
         stringCount: nonEmpty.filter((v) => typeof v === 'string').length,
         numericCount: nonEmpty.filter((v) => typeof v === 'number').length,
-        dateCount: nonEmpty.filter((v) => v instanceof Date).length,
+        dateCount: 0,
       });
     }
 
     return rows;
   }
 
-  private detectByHeaderDataTransition(rows: RowAnalysis[]): number | null {
+  private detectByHeaderDataTransition(rows: { rowNumber: number; nonEmptyCount: number; stringCount: number; numericCount: number }[]): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
-
-    if (candidates.length < 2) {
-      return null;
-    }
+    if (candidates.length < 2) return null;
 
     let bestScore = -Infinity;
     let bestRow: number | null = null;
@@ -297,15 +342,11 @@ export class XlsxExtractionService {
     return bestRow;
   }
 
-  private detectByStringDominance(rows: RowAnalysis[]): number | null {
+  private detectByStringDominance(rows: { rowNumber: number; nonEmptyCount: number; stringCount: number }[]): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+    if (candidates.length === 0) return null;
 
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const avgStrings =
-      candidates.reduce((sum, r) => sum + r.stringCount, 0) / candidates.length;
+    const avgStrings = candidates.reduce((sum, r) => sum + r.stringCount, 0) / candidates.length;
 
     const likelyHeader = candidates.find((r) => {
       const stringRatio = r.stringCount / r.nonEmptyCount;
@@ -318,18 +359,12 @@ export class XlsxExtractionService {
   private detectByColumnConsistency(
     worksheet: XLSX.WorkSheet,
     range: XLSX.Range,
-    rows: RowAnalysis[],
+    rows: { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number }[],
   ): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+    if (candidates.length < 2) return null;
 
-    if (candidates.length < 2) {
-      return null;
-    }
-
-    const columnTypes: Map<
-      number,
-      { string: number; numeric: number; date: number }
-    > = new Map();
+    const columnTypes = new Map<number, { string: number; numeric: number; date: number }>();
 
     for (let col = range.s.c; col <= range.e.c; col++) {
       columnTypes.set(col, { string: 0, numeric: 0, date: 0 });
@@ -347,7 +382,6 @@ export class XlsxExtractionService {
 
         if (typeof value === 'string') typeMap.string++;
         else if (typeof value === 'number') typeMap.numeric++;
-        else if (value instanceof Date) typeMap.date++;
       }
     }
 
@@ -374,8 +408,7 @@ export class XlsxExtractionService {
         }
       }
 
-      const score =
-        matchingColumns * 10 - (header.rowNumber - rows[0].rowNumber) * 2;
+      const score = matchingColumns * 10 - (header.rowNumber - rows[0].rowNumber) * 2;
 
       if (score > bestScore) {
         bestScore = score;
@@ -386,12 +419,12 @@ export class XlsxExtractionService {
     return bestRow;
   }
 
-  private detectByFirstValidRow(rows: RowAnalysis[]): number | null {
+  private detectByFirstValidRow(rows: { rowNumber: number; nonEmptyCount: number }[]): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
     return candidates[0]?.rowNumber ?? null;
   }
 
-  private fallbackDetectHeader(rows: RowAnalysis[]): number | null {
+  private fallbackDetectHeader(rows: { rowNumber: number; nonEmptyCount: number }[]): number | null {
     const nonEmpty = rows.filter((r) => r.nonEmptyCount > 0);
     return nonEmpty[0]?.rowNumber ?? null;
   }
@@ -401,17 +434,13 @@ export class XlsxExtractionService {
     rowNumber: number,
     startColumn: number,
     endColumn: number,
-  ): RawXlsxCellValue[] {
+  ): (string | number | null)[] {
     if (endColumn < startColumn) {
       return [];
     }
 
-    const values: RawXlsxCellValue[] = [];
-    for (
-      let columnNumber = startColumn;
-      columnNumber <= endColumn;
-      columnNumber += 1
-    ) {
+    const values: (string | number | null)[] = [];
+    for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
       const address = XLSX.utils.encode_cell({ r: rowNumber, c: columnNumber });
       const cell = worksheet[address];
       values.push(this.readCellValue(cell));
@@ -419,33 +448,30 @@ export class XlsxExtractionService {
     return values;
   }
 
-  private readCellValue(cell: XLSX.CellObject | undefined): RawXlsxCellValue {
+  private readCellValue(cell: XLSX.CellObject | undefined): string | number | null {
     if (!cell || cell.v === undefined || cell.v === null) {
       return null;
     }
 
     if (cell.v instanceof Date) {
+      return cell.v.toISOString();
+    }
+
+    if (typeof cell.v === 'string') {
       return cell.v;
     }
 
-    if (
-      typeof cell.v === 'string' ||
-      typeof cell.v === 'number' ||
-      typeof cell.v === 'boolean'
-    ) {
+    if (typeof cell.v === 'number') {
       return cell.v;
     }
 
     return String(cell.v);
   }
 
-  private findLastNonEmptyIndex(values: RawXlsxCellValue[]): number {
+  private findLastNonEmptyIndex(values: (string | number | null)[]): number {
     for (let index = values.length - 1; index >= 0; index -= 1) {
       const value = values[index];
-      if (
-        value !== null &&
-        !(typeof value === 'string' && value.trim().length === 0)
-      ) {
+      if (value !== null && !(typeof value === 'string' && value.trim().length === 0)) {
         return index;
       }
     }
@@ -454,24 +480,15 @@ export class XlsxExtractionService {
   }
 
   private isTrailingNoteRow(row: RawXlsxRow): boolean {
-    if (
-      row.headers.length <= 1 ||
-      row.extraValues.some((value) => !this.isEmpty(value))
-    ) {
-      return false;
-    }
-
     const nonEmptyValues = row.values.filter((value) => !this.isEmpty(value));
     if (nonEmptyValues.length !== 1 || this.isEmpty(row.values[0])) {
       return false;
     }
 
-    return (
-      typeof row.values[0] === 'string' && row.values[0].trim().length > 25
-    );
+    return typeof row.values[0] === 'string' && row.values[0].trim().length > 25;
   }
 
-  private isEmpty(value: RawXlsxCellValue | undefined): boolean {
+  private isEmpty(value: unknown): boolean {
     return (
       value === null ||
       value === undefined ||

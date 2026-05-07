@@ -1,18 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ExtractedAssetCandidate, BatchPersistenceResult, CsvRowError } from '../utils/csv-stream.types';
-import { ExtractedAssetRepository } from '../repositories/extracted-asset.repository';
 import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
 import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
-import { ExtractedAssetEntity } from '../entities/extracted-asset.entity';
-import { ExtractedAssetFieldEntity } from '../entities/extracted-asset-field.entity';
-import { ExtractionErrorEntity } from '../entities/extraction-error.entity';
-import { ExtractedAssetReviewStatus } from '../entities/extracted-asset.entity';
-import { ExtractionMethod } from '../entities/extracted-asset-field.entity';
+import { ExtractedAssetFieldEntity, ExtractionMethod, ExtractedAssetReviewStatus } from '../entities/extracted-asset-field.entity';
 
 @Injectable()
 export class ExtractionPersistenceService {
   constructor(
-    private readonly extractedAssetRepository: ExtractedAssetRepository,
     private readonly extractedAssetFieldRepository: ExtractedAssetFieldRepository,
     private readonly extractionErrorRepository: ExtractionErrorRepository,
   ) {}
@@ -24,19 +18,17 @@ export class ExtractionPersistenceService {
     batchSize: number = 100,
   ): Promise<BatchPersistenceResult> {
     const errors: CsvRowError[] = [];
-    let savedAssets = 0;
     let savedFields = 0;
 
     const chunks = this.chunkArray(candidates, batchSize);
 
     for (const chunk of chunks) {
       const result = await this.persistChunk(documentId, extractionJobId, chunk);
-      savedAssets += result.savedAssets;
       savedFields += result.savedFields;
       errors.push(...result.errors);
     }
 
-    return { savedAssets, savedFields, errors };
+    return { savedAssets: candidates.length, savedFields, errors };
   }
 
   private async persistChunk(
@@ -45,42 +37,34 @@ export class ExtractionPersistenceService {
     candidates: ExtractedAssetCandidate[],
   ): Promise<BatchPersistenceResult> {
     const errors: CsvRowError[] = [];
-    let savedAssets = 0;
     let savedFields = 0;
 
     try {
+      const fieldsToInsert: Partial<ExtractedAssetFieldEntity>[] = [];
+
       for (const candidate of candidates) {
-        try {
-          const asset = await this.extractedAssetRepository.create({
+        for (const field of candidate.fields) {
+          fieldsToInsert.push({
             documentId,
-            extractionJobId: extractionJobId || undefined,
-            rawAssetName: candidate.rawAssetName,
-            overallConfidence: candidate.overallConfidence,
+            extractionJobId: extractionJobId || null,
+            rawAssetName: candidate.rawAssetName || null,
+            overallConfidence: candidate.overallConfidence ?? null,
             reviewStatus: ExtractedAssetReviewStatus.PENDING,
             extractionStrategy: 'TABLE_EXTRACTION',
-          });
-          savedAssets++;
-
-          const fields = candidate.fields.map((field) => ({
-            extractedAssetId: asset.id,
             fieldName: field.fieldName,
             rawValue: field.rawValue,
-            normalizedValue: field.normalizedValue !== undefined ? field.normalizedValue as object : undefined,
-            confidenceScore: field.confidenceScore,
-            extractionMethod: field.confidenceScore !== undefined ? ExtractionMethod.TABLE_EXTRACTION : undefined,
-          }));
-
-          if (fields.length > 0) {
-            await this.extractedAssetFieldRepository.createMany(fields);
-            savedFields += fields.length;
-          }
-        } catch (error) {
-          errors.push({
-            rowIndex: candidate.sourceRowIndex,
-            reason: `Failed to save asset: ${(error as Error).message}`,
-            rawData: { rawAssetName: candidate.rawAssetName },
+            normalizedValue: field.normalizedValue !== undefined ? field.normalizedValue as object : null,
+            confidenceScore: field.confidenceScore ?? null,
+            extractionMethod: field.confidenceScore !== undefined ? ExtractionMethod.TABLE_EXTRACTION : null,
+            sourceRowIndex: candidate.sourceRowIndex,
+            sourceSheetName: candidate.sourceSheetName || null,
           });
         }
+      }
+
+      if (fieldsToInsert.length > 0) {
+        await this.extractedAssetFieldRepository.createMany(fieldsToInsert);
+        savedFields = fieldsToInsert.length;
       }
     } catch (error) {
       for (const candidate of candidates) {
@@ -89,11 +73,10 @@ export class ExtractionPersistenceService {
           reason: `Transaction failed: ${(error as Error).message}`,
         });
       }
-      savedAssets = 0;
       savedFields = 0;
     }
 
-    return { savedAssets, savedFields, errors };
+    return { savedAssets: candidates.length, savedFields, errors };
   }
 
   async logError(
@@ -113,8 +96,8 @@ export class ExtractionPersistenceService {
   }
 
   async checkIdempotency(documentId: string, rowIndex: number): Promise<boolean> {
-    const assets = await this.extractedAssetRepository.findByDocumentId(documentId);
-    return assets.some((a) => a.rawAssetName?.includes(`row_${rowIndex}`));
+    const fields = await this.extractedAssetFieldRepository.findByDocumentId(documentId);
+    return fields.some((f) => f.sourceRowIndex === rowIndex);
   }
 
   private chunkArray<T>(array: T[], size: number): T[][] {
