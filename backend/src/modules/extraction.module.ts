@@ -14,7 +14,9 @@ import { XlsxExtractionStrategy } from '../strategies/xlsx-extraction.strategy';
 import { PdfExtractionStrategy } from '../strategies/pdf-extraction.strategy';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
 import { ExtractionController } from '../controllers/extraction.controller';
+import { DocumentsController } from '../controllers/documents.controller';
 import { ExtractionRepository } from '../repositories/extraction.repository';
+import { DocumentsService } from '../services/documents.service';
 import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
@@ -77,7 +79,7 @@ import {
       ExtractionErrorEntity,
     ]),
   ],
-  controllers: [ExtractionController],
+  controllers: [ExtractionController, DocumentsController],
   providers: [
     AppLoggerService,
     CsvExtractionService,
@@ -92,6 +94,7 @@ import {
     PdfExtractionStrategy,
     ExtractionStrategyFactory,
     ExtractionRepository,
+    DocumentsService,
     CsvAssetMapperService,
     XlsxAssetMapperService,
     PaddleOcrService,
