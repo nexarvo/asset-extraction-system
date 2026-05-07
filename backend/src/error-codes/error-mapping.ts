@@ -13,6 +13,7 @@ export const ERROR_STATUS_MAP: Record<ErrorCode, HttpStatus> = {
   [ErrorCode.OcrExtractionFailed]: HttpStatus.UNPROCESSABLE_ENTITY,
   [ErrorCode.ValidationFailed]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PersistenceFailed]: HttpStatus.INTERNAL_SERVER_ERROR,
+  [ErrorCode.QueueDispatchFailed]: HttpStatus.SERVICE_UNAVAILABLE,
   [ErrorCode.InternalError]: HttpStatus.INTERNAL_SERVER_ERROR,
 };
 
@@ -28,5 +29,6 @@ export const ERROR_MESSAGE_MAP: Record<ErrorCode, string> = {
   [ErrorCode.OcrExtractionFailed]: 'OCR extraction failed.',
   [ErrorCode.ValidationFailed]: 'Request validation failed.',
   [ErrorCode.PersistenceFailed]: 'Could not persist extraction result.',
+  [ErrorCode.QueueDispatchFailed]: 'Queue service is unavailable. Please ensure Redis is running.',
   [ErrorCode.InternalError]: 'An unexpected error occurred.',
 };

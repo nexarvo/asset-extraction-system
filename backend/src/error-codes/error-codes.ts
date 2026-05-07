@@ -10,5 +10,6 @@ export enum ErrorCode {
   OcrExtractionFailed = 'OCR_EXTRACTION_FAILED',
   ValidationFailed = 'VALIDATION_FAILED',
   PersistenceFailed = 'PERSISTENCE_FAILED',
+  QueueDispatchFailed = 'QUEUE_DISPATCH_FAILED',
   InternalError = 'INTERNAL_ERROR',
 }

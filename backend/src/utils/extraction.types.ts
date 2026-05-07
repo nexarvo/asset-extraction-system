@@ -66,6 +66,31 @@ export interface StoredExtraction {
   readonly createdAt: string;
 }
 
+export type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'retrying';
+
+export interface ExtractionJobData {
+  readonly jobId: string;
+  readonly filename: string;
+  readonly buffer: Buffer;
+  readonly fileType: 'csv' | 'xlsx' | 'pdf';
+}
+
+export interface ExtractionJobResult {
+  readonly jobId: string;
+  readonly status: JobStatus;
+  readonly filename: string;
+  readonly fileType: 'csv' | 'xlsx' | 'pdf';
+  readonly error?: string;
+  readonly errorCode?: string;
+  readonly stackTrace?: string;
+}
+
+export interface QueuedJobResponse {
+  readonly jobId: string;
+  readonly filename: string;
+  readonly status: JobStatus;
+}
+
 export type TextBlockType = 'paragraph' | 'header' | 'table' | 'footer' | 'unknown';
 
 export interface TextBlockPosition {
