@@ -15,6 +15,15 @@ import { createExtractionMetadata, getSupportedFileType } from '../utils/file.ut
 import { normalizeXlsxHeaders, XlsxRowValidator } from '../utils/xlsx.utils';
 import { XlsxAssetMapperService } from './xlsxAssetMapper.service';
 
+interface RowAnalysis {
+  rowNumber: number;
+  values: RawXlsxCellValue[];
+  nonEmptyCount: number;
+  stringCount: number;
+  numericCount: number;
+  dateCount: number;
+}
+
 @Injectable()
 export class XlsxExtractionService {
   private readonly rowValidator = new XlsxRowValidator();
@@ -146,49 +155,190 @@ export class XlsxExtractionService {
   }
 
   private detectHeaderRowNumber(worksheet: XLSX.WorkSheet, range: XLSX.Range): number | null {
-    const scannedRows: Array<{ rowNumber: number; nonEmptyCount: number; stringCount: number; numericCount: number }> = [];
-    const scanEnd = Math.min(range.e.r, range.s.r + 49);
+    const scanEnd = Math.min(range.e.r, range.s.r + 99);
+    const rowData = this.scanRows(worksheet, range, range.s.r, scanEnd);
 
-    for (let rowNumber = range.s.r; rowNumber <= scanEnd; rowNumber += 1) {
-      const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.e.c);
-      const nonEmptyValues = values.filter((value) => !this.isEmpty(value));
-
-      if (nonEmptyValues.length === 0) {
-        continue;
-      }
-
-      scannedRows.push({
-        rowNumber,
-        nonEmptyCount: nonEmptyValues.length,
-        stringCount: nonEmptyValues.filter((value) => typeof value === 'string').length,
-        numericCount: nonEmptyValues.filter((value) => typeof value === 'number').length,
-      });
-    }
-
-    if (scannedRows.length === 0) {
+    if (rowData.length === 0) {
       return null;
     }
 
-    const hasWideRows = scannedRows.some((row) => row.nonEmptyCount > 1);
-    const candidates = scannedRows.filter((row) => row.nonEmptyCount >= (hasWideRows ? 2 : 1));
+    const strategies = [
+      this.detectByHeaderDataTransition(rowData),
+      this.detectByStringDominance(rowData),
+      this.detectByColumnConsistency(worksheet, range, rowData),
+      this.detectByFirstValidRow(rowData),
+    ];
 
-    return candidates
-      .map((row, index) => {
-        const nextRow = candidates[index + 1];
-        const nextRowLooksLikeData = nextRow && nextRow.nonEmptyCount >= row.nonEmptyCount && nextRow.numericCount > row.numericCount;
+    const validResults = strategies.filter((r): r is number => r !== null);
 
-        return {
-          rowNumber: row.rowNumber,
-          score:
-            row.nonEmptyCount * 10 +
-            row.stringCount * 2 -
-            row.numericCount * 3 +
-            (nextRow ? 3 : 0) +
-            (nextRowLooksLikeData ? 8 : 0) -
-            (row.rowNumber - range.s.r) * 4,
-        };
-      })
-      .sort((left, right) => right.score - left.score || left.rowNumber - right.rowNumber)[0].rowNumber;
+    if (validResults.length === 0) {
+      return this.fallbackDetectHeader(rowData);
+    }
+
+    return validResults[0];
+  }
+
+  private scanRows(
+    worksheet: XLSX.WorkSheet,
+    range: XLSX.Range,
+    startRow: number,
+    endRow: number,
+  ): RowAnalysis[] {
+    const rows: RowAnalysis[] = [];
+
+    for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+      const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.e.c);
+      const nonEmpty = values.filter((v) => !this.isEmpty(v));
+
+      rows.push({
+        rowNumber,
+        values,
+        nonEmptyCount: nonEmpty.length,
+        stringCount: nonEmpty.filter((v) => typeof v === 'string').length,
+        numericCount: nonEmpty.filter((v) => typeof v === 'number').length,
+        dateCount: nonEmpty.filter((v) => v instanceof Date).length,
+      });
+    }
+
+    return rows;
+  }
+
+  private detectByHeaderDataTransition(rows: RowAnalysis[]): number | null {
+    const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+
+    if (candidates.length < 2) {
+      return null;
+    }
+
+    let bestScore = -Infinity;
+    let bestRow: number | null = null;
+
+    for (let i = 0; i < candidates.length - 1; i++) {
+      const header = candidates[i];
+      const next = candidates[i + 1];
+
+      const stringRatio = header.stringCount / header.nonEmptyCount;
+      const nextNumericRatio = next.numericCount / next.nonEmptyCount;
+      const hasMoreNumeric = next.numericCount > header.numericCount;
+
+      const score =
+        stringRatio * 40 +
+        (hasMoreNumeric ? 25 : 0) +
+        (nextNumericRatio > 0.3 ? 15 : 0) +
+        header.nonEmptyCount * 5 -
+        (header.rowNumber - rows[0].rowNumber) * 2;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestRow = header.rowNumber;
+      }
+    }
+
+    return bestRow;
+  }
+
+  private detectByStringDominance(rows: RowAnalysis[]): number | null {
+    const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const avgStrings =
+      candidates.reduce((sum, r) => sum + r.stringCount, 0) /
+      candidates.length;
+
+    const likelyHeader = candidates.find((r) => {
+      const stringRatio = r.stringCount / r.nonEmptyCount;
+      return stringRatio > 0.6 && r.stringCount > avgStrings * 0.8;
+    });
+
+    return likelyHeader?.rowNumber ?? null;
+  }
+
+  private detectByColumnConsistency(
+    worksheet: XLSX.WorkSheet,
+    range: XLSX.Range,
+    rows: RowAnalysis[],
+  ): number | null {
+    const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+
+    if (candidates.length < 2) {
+      return null;
+    }
+
+    const columnTypes: Map<
+      number,
+      { string: number; numeric: number; date: number }
+    > = new Map();
+
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      columnTypes.set(col, { string: 0, numeric: 0, date: 0 });
+    }
+
+    for (let i = 1; i < candidates.length; i++) {
+      const row = candidates[i];
+      for (let colIdx = 0; colIdx < row.values.length; colIdx++) {
+        const col = range.s.c + colIdx;
+        const typeMap = columnTypes.get(col);
+        if (!typeMap) continue;
+
+        const value = row.values[colIdx];
+        if (this.isEmpty(value)) continue;
+
+        if (typeof value === 'string') typeMap.string++;
+        else if (typeof value === 'number') typeMap.numeric++;
+        else if (value instanceof Date) typeMap.date++;
+      }
+    }
+
+    let bestScore = -Infinity;
+    let bestRow: number | null = null;
+
+    for (let i = 0; i < candidates.length - 1; i++) {
+      const header = candidates[i];
+      let matchingColumns = 0;
+
+      for (let colIdx = 0; colIdx < header.values.length; colIdx++) {
+        const col = range.s.c + colIdx;
+        const headerValue = header.values[colIdx];
+        if (this.isEmpty(headerValue)) continue;
+
+        const typeMap = columnTypes.get(col);
+        if (!typeMap) continue;
+
+        const total = typeMap.string + typeMap.numeric + typeMap.date;
+        if (total === 0) continue;
+
+        if (
+          typeof headerValue === 'string' &&
+          typeMap.string > total * 0.5
+        ) {
+          matchingColumns++;
+        }
+      }
+
+      const score =
+        matchingColumns * 10 -
+        (header.rowNumber - rows[0].rowNumber) * 2;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestRow = header.rowNumber;
+      }
+    }
+
+    return bestRow;
+  }
+
+  private detectByFirstValidRow(rows: RowAnalysis[]): number | null {
+    const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
+    return candidates[0]?.rowNumber ?? null;
+  }
+
+  private fallbackDetectHeader(rows: RowAnalysis[]): number | null {
+    const nonEmpty = rows.filter((r) => r.nonEmptyCount > 0);
+    return nonEmpty[0]?.rowNumber ?? null;
   }
 
   private readRowValues(worksheet: XLSX.WorkSheet, rowNumber: number, startColumn: number, endColumn: number): RawXlsxCellValue[] {
