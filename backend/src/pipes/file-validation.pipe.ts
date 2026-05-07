@@ -5,10 +5,16 @@ import { AssetFileInput, SupportedFileType } from '../utils/extraction.types';
 import { getFileExtension, getSupportedFileType } from '../utils/file.utils';
 
 @Injectable()
-export class FileValidationPipe implements PipeTransform<AssetFileInput, AssetFileInput> {
+export class FileValidationPipe implements PipeTransform<
+  AssetFileInput,
+  AssetFileInput
+> {
   transform(value: AssetFileInput): AssetFileInput {
     if (!value.filename || !value.buffer || value.buffer.length === 0) {
-      throw new ApplicationError(ErrorCode.ValidationFailed, 'A filename and non-empty buffer are required.');
+      throw new ApplicationError(
+        ErrorCode.ValidationFailed,
+        'A filename and non-empty buffer are required.',
+      );
     }
 
     try {
@@ -36,7 +42,10 @@ interface UploadedFileValidationOptions {
   readonly fallbackMimeTypes?: readonly string[];
 }
 
-export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFile | undefined, AssetFileInput> {
+export class UploadedFileValidationPipe implements PipeTransform<
+  UploadedAssetFile | undefined,
+  AssetFileInput
+> {
   constructor(private readonly options: UploadedFileValidationOptions) {}
 
   transform(value: UploadedAssetFile | undefined): AssetFileInput {
@@ -54,21 +63,32 @@ export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFi
     return input;
   }
 
-  private assertFileExists(value: UploadedAssetFile | undefined): asserts value is UploadedAssetFile & { buffer: Buffer } {
+  private assertFileExists(
+    value: UploadedAssetFile | undefined,
+  ): asserts value is UploadedAssetFile & { buffer: Buffer } {
     if (!value || !value.buffer) {
-      throw new ApplicationError(ErrorCode.ValidationFailed, 'A multipart file field named "file" is required.');
+      throw new ApplicationError(
+        ErrorCode.ValidationFailed,
+        'A multipart file field named "file" is required.',
+      );
     }
   }
 
   private assertFileHasContent(value: UploadedAssetFile): void {
     if (value.size <= 0 || !value.buffer || value.buffer.length === 0) {
-      throw new ApplicationError(ErrorCode.ValidationFailed, 'Uploaded file must not be empty.');
+      throw new ApplicationError(
+        ErrorCode.ValidationFailed,
+        'Uploaded file must not be empty.',
+      );
     }
   }
 
   private assertMimeTypeAllowed(value: UploadedAssetFile): void {
-    const isAllowedMimeType = this.options.allowedMimeTypes.includes(value.mimetype);
-    const isFallbackMimeType = this.options.fallbackMimeTypes?.includes(value.mimetype) ?? false;
+    const isAllowedMimeType = this.options.allowedMimeTypes.includes(
+      value.mimetype,
+    );
+    const isFallbackMimeType =
+      this.options.fallbackMimeTypes?.includes(value.mimetype) ?? false;
 
     if (!isAllowedMimeType && !isFallbackMimeType) {
       throw new ApplicationError(ErrorCode.UnsupportedFileType, undefined, {

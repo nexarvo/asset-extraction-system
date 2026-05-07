@@ -13,23 +13,44 @@ interface StructuredLog {
 
 @Injectable()
 export class AppLoggerService implements LoggerService {
-  log(message: string, context?: string, metadata?: Record<string, unknown>): void {
+  log(
+    message: string,
+    context?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
     this.write({ level: 'log', message, context, metadata });
   }
 
-  error(message: string, trace?: string, context?: string, metadata?: Record<string, unknown>): void {
+  error(
+    message: string,
+    trace?: string,
+    context?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
     this.write({ level: 'error', message, trace, context, metadata });
   }
 
-  warn(message: string, context?: string, metadata?: Record<string, unknown>): void {
+  warn(
+    message: string,
+    context?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
     this.write({ level: 'warn', message, context, metadata });
   }
 
-  debug(message: string, context?: string, metadata?: Record<string, unknown>): void {
+  debug(
+    message: string,
+    context?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
     this.write({ level: 'debug', message, context, metadata });
   }
 
-  verbose(message: string, context?: string, metadata?: Record<string, unknown>): void {
+  verbose(
+    message: string,
+    context?: string,
+    metadata?: Record<string, unknown>,
+  ): void {
     this.write({ level: 'verbose', message, context, metadata });
   }
 

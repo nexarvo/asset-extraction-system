@@ -13,7 +13,9 @@ export interface XlsxRowValidationFailure {
   };
 }
 
-export function normalizeXlsxHeaders(headers: readonly RawXlsxCellValue[]): string[] {
+export function normalizeXlsxHeaders(
+  headers: readonly RawXlsxCellValue[],
+): string[] {
   const seen = new Map<string, number>();
 
   return headers.map((header, index) => {
@@ -41,18 +43,29 @@ export class XlsxRowValidator {
   validate(row: RawXlsxRow): XlsxRowValidationFailure[] {
     const failures: XlsxRowValidationFailure[] = [];
 
-    if (row.values.every((value) => this.isEmpty(value)) && row.extraValues.every((value) => this.isEmpty(value))) {
+    if (
+      row.values.every((value) => this.isEmpty(value)) &&
+      row.extraValues.every((value) => this.isEmpty(value))
+    ) {
       failures.push(this.createFailure(row, 'Row is empty.'));
     }
 
     if (row.extraValues.some((value) => !this.isEmpty(value))) {
-      failures.push(this.createFailure(row, `Extra columns detected: ${row.extraValues.filter((value) => !this.isEmpty(value)).length}.`));
+      failures.push(
+        this.createFailure(
+          row,
+          `Extra columns detected: ${row.extraValues.filter((value) => !this.isEmpty(value)).length}.`,
+        ),
+      );
     }
 
     return failures;
   }
 
-  private createFailure(row: RawXlsxRow, reason: string): XlsxRowValidationFailure {
+  private createFailure(
+    row: RawXlsxRow,
+    reason: string,
+  ): XlsxRowValidationFailure {
     return {
       code: ErrorCode.XlsxRowInvalid,
       sheetName: row.sheetName,
@@ -67,6 +80,10 @@ export class XlsxRowValidator {
   }
 
   private isEmpty(value: RawXlsxCellValue | undefined): boolean {
-    return value === null || value === undefined || (typeof value === 'string' && value.trim().length === 0);
+    return (
+      value === null ||
+      value === undefined ||
+      (typeof value === 'string' && value.trim().length === 0)
+    );
   }
 }

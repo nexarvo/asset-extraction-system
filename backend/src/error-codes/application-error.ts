@@ -6,7 +6,11 @@ export class ApplicationError extends Error {
   readonly statusCode: number;
   readonly details?: unknown;
 
-  constructor(code: ErrorCode, message = ERROR_MESSAGE_MAP[code], details?: unknown) {
+  constructor(
+    code: ErrorCode,
+    message = ERROR_MESSAGE_MAP[code],
+    details?: unknown,
+  ) {
     super(message);
     this.name = 'ApplicationError';
     this.code = code;

@@ -11,7 +11,10 @@ import {
   RawXlsxRow,
   SupportedFileType,
 } from '../utils/extraction.types';
-import { createExtractionMetadata, getSupportedFileType } from '../utils/file.utils';
+import {
+  createExtractionMetadata,
+  getSupportedFileType,
+} from '../utils/file.utils';
 import { normalizeXlsxHeaders, XlsxRowValidator } from '../utils/xlsx.utils';
 import { XlsxAssetMapperService } from './xlsxAssetMapper.service';
 
@@ -35,14 +38,21 @@ export class XlsxExtractionService {
 
   async extractDataFromXlsx(input: AssetFileInput): Promise<ExtractionResult> {
     try {
-      this.logger.log('starting spreadsheet extraction', 'XlsxExtractionService', { filename: input.filename });
+      this.logger.log(
+        'starting spreadsheet extraction',
+        'XlsxExtractionService',
+        { filename: input.filename },
+      );
       const workbook = this.readWorkbook(input.buffer);
       const records = this.extractWorkbookRecords(workbook, input.filename);
       const fileType = getSupportedFileType(input);
 
       return {
         sourceFile: input.filename,
-        fileType: fileType === SupportedFileType.Xls ? SupportedFileType.Xls : SupportedFileType.Xlsx,
+        fileType:
+          fileType === SupportedFileType.Xls
+            ? SupportedFileType.Xls
+            : SupportedFileType.Xlsx,
         records,
         metadata: createExtractionMetadata(records.length),
       };
@@ -62,7 +72,10 @@ export class XlsxExtractionService {
     return XLSX.read(buffer, { type: 'buffer', cellDates: true });
   }
 
-  private extractWorkbookRecords(workbook: XLSX.WorkBook, filename: string): ExtractedAssetRecord[] {
+  private extractWorkbookRecords(
+    workbook: XLSX.WorkBook,
+    filename: string,
+  ): ExtractedAssetRecord[] {
     try {
       const records: ExtractedAssetRecord[] = [];
 
@@ -87,7 +100,11 @@ export class XlsxExtractionService {
     records: ExtractedAssetRecord[],
   ): void {
     if (!worksheet?.['!ref']) {
-      this.logger.warn('empty spreadsheet sheet skipped', 'XlsxExtractionService', { filename, sheetName });
+      this.logger.warn(
+        'empty spreadsheet sheet skipped',
+        'XlsxExtractionService',
+        { filename, sheetName },
+      );
       return;
     }
 
@@ -95,11 +112,20 @@ export class XlsxExtractionService {
     const headerRowNumber = this.detectHeaderRowNumber(worksheet, range);
 
     if (headerRowNumber === null) {
-      this.logger.warn('spreadsheet sheet missing headers', 'XlsxExtractionService', { filename, sheetName });
+      this.logger.warn(
+        'spreadsheet sheet missing headers',
+        'XlsxExtractionService',
+        { filename, sheetName },
+      );
       return;
     }
 
-    const headerCells = this.readRowValues(worksheet, headerRowNumber, range.s.c, range.e.c);
+    const headerCells = this.readRowValues(
+      worksheet,
+      headerRowNumber,
+      range.s.c,
+      range.e.c,
+    );
     const headerLength = this.findLastNonEmptyIndex(headerCells) + 1;
     const headers = normalizeXlsxHeaders(headerCells.slice(0, headerLength));
     this.logger.log('spreadsheet headers parsed', 'XlsxExtractionService', {
@@ -109,10 +135,24 @@ export class XlsxExtractionService {
       headers,
     });
 
-    for (let rowNumber = headerRowNumber + 1; rowNumber <= range.e.r; rowNumber += 1) {
+    for (
+      let rowNumber = headerRowNumber + 1;
+      rowNumber <= range.e.r;
+      rowNumber += 1
+    ) {
       try {
-        const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.s.c + headerLength - 1);
-        const extraValues = this.readRowValues(worksheet, rowNumber, range.s.c + headerLength, range.e.c);
+        const values = this.readRowValues(
+          worksheet,
+          rowNumber,
+          range.s.c,
+          range.s.c + headerLength - 1,
+        );
+        const extraValues = this.readRowValues(
+          worksheet,
+          rowNumber,
+          range.s.c + headerLength,
+          range.e.c,
+        );
         const rawRow: RawXlsxRow = {
           sheetName,
           rowIndex: rowNumber + 1,
@@ -122,11 +162,15 @@ export class XlsxExtractionService {
         };
 
         if (this.isTrailingNoteRow(rawRow)) {
-          this.logger.log('spreadsheet note row skipped', 'XlsxExtractionService', {
-            filename,
-            sheetName,
-            rowIndex: rowNumber + 1,
-          });
+          this.logger.log(
+            'spreadsheet note row skipped',
+            'XlsxExtractionService',
+            {
+              filename,
+              sheetName,
+              rowIndex: rowNumber + 1,
+            },
+          );
           continue;
         }
 
@@ -134,27 +178,38 @@ export class XlsxExtractionService {
 
         if (failures.length > 0) {
           failures.forEach((failure) => {
-            this.logger.warn('invalid spreadsheet row skipped', 'XlsxExtractionService', {
-              filename,
-              ...failure,
-            });
+            this.logger.warn(
+              'invalid spreadsheet row skipped',
+              'XlsxExtractionService',
+              {
+                filename,
+                ...failure,
+              },
+            );
           });
           continue;
         }
 
         records.push(this.xlsxAssetMapperService.mapRow(rawRow));
       } catch (error) {
-        this.logger.warn('spreadsheet row processing failed', 'XlsxExtractionService', {
-          filename,
-          sheetName,
-          rowIndex: rowNumber + 1,
-          cause: error instanceof Error ? error.message : String(error),
-        });
+        this.logger.warn(
+          'spreadsheet row processing failed',
+          'XlsxExtractionService',
+          {
+            filename,
+            sheetName,
+            rowIndex: rowNumber + 1,
+            cause: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
   }
 
-  private detectHeaderRowNumber(worksheet: XLSX.WorkSheet, range: XLSX.Range): number | null {
+  private detectHeaderRowNumber(
+    worksheet: XLSX.WorkSheet,
+    range: XLSX.Range,
+  ): number | null {
     const scanEnd = Math.min(range.e.r, range.s.r + 99);
     const rowData = this.scanRows(worksheet, range, range.s.r, scanEnd);
 
@@ -187,7 +242,12 @@ export class XlsxExtractionService {
     const rows: RowAnalysis[] = [];
 
     for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
-      const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.e.c);
+      const values = this.readRowValues(
+        worksheet,
+        rowNumber,
+        range.s.c,
+        range.e.c,
+      );
       const nonEmpty = values.filter((v) => !this.isEmpty(v));
 
       rows.push({
@@ -245,8 +305,7 @@ export class XlsxExtractionService {
     }
 
     const avgStrings =
-      candidates.reduce((sum, r) => sum + r.stringCount, 0) /
-      candidates.length;
+      candidates.reduce((sum, r) => sum + r.stringCount, 0) / candidates.length;
 
     const likelyHeader = candidates.find((r) => {
       const stringRatio = r.stringCount / r.nonEmptyCount;
@@ -310,17 +369,13 @@ export class XlsxExtractionService {
         const total = typeMap.string + typeMap.numeric + typeMap.date;
         if (total === 0) continue;
 
-        if (
-          typeof headerValue === 'string' &&
-          typeMap.string > total * 0.5
-        ) {
+        if (typeof headerValue === 'string' && typeMap.string > total * 0.5) {
           matchingColumns++;
         }
       }
 
       const score =
-        matchingColumns * 10 -
-        (header.rowNumber - rows[0].rowNumber) * 2;
+        matchingColumns * 10 - (header.rowNumber - rows[0].rowNumber) * 2;
 
       if (score > bestScore) {
         bestScore = score;
@@ -341,13 +396,22 @@ export class XlsxExtractionService {
     return nonEmpty[0]?.rowNumber ?? null;
   }
 
-  private readRowValues(worksheet: XLSX.WorkSheet, rowNumber: number, startColumn: number, endColumn: number): RawXlsxCellValue[] {
+  private readRowValues(
+    worksheet: XLSX.WorkSheet,
+    rowNumber: number,
+    startColumn: number,
+    endColumn: number,
+  ): RawXlsxCellValue[] {
     if (endColumn < startColumn) {
       return [];
     }
 
     const values: RawXlsxCellValue[] = [];
-    for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
+    for (
+      let columnNumber = startColumn;
+      columnNumber <= endColumn;
+      columnNumber += 1
+    ) {
       const address = XLSX.utils.encode_cell({ r: rowNumber, c: columnNumber });
       const cell = worksheet[address];
       values.push(this.readCellValue(cell));
@@ -364,7 +428,11 @@ export class XlsxExtractionService {
       return cell.v;
     }
 
-    if (typeof cell.v === 'string' || typeof cell.v === 'number' || typeof cell.v === 'boolean') {
+    if (
+      typeof cell.v === 'string' ||
+      typeof cell.v === 'number' ||
+      typeof cell.v === 'boolean'
+    ) {
       return cell.v;
     }
 
@@ -374,7 +442,10 @@ export class XlsxExtractionService {
   private findLastNonEmptyIndex(values: RawXlsxCellValue[]): number {
     for (let index = values.length - 1; index >= 0; index -= 1) {
       const value = values[index];
-      if (value !== null && !(typeof value === 'string' && value.trim().length === 0)) {
+      if (
+        value !== null &&
+        !(typeof value === 'string' && value.trim().length === 0)
+      ) {
         return index;
       }
     }
@@ -383,7 +454,10 @@ export class XlsxExtractionService {
   }
 
   private isTrailingNoteRow(row: RawXlsxRow): boolean {
-    if (row.headers.length <= 1 || row.extraValues.some((value) => !this.isEmpty(value))) {
+    if (
+      row.headers.length <= 1 ||
+      row.extraValues.some((value) => !this.isEmpty(value))
+    ) {
       return false;
     }
 
@@ -392,10 +466,16 @@ export class XlsxExtractionService {
       return false;
     }
 
-    return typeof row.values[0] === 'string' && row.values[0].trim().length > 25;
+    return (
+      typeof row.values[0] === 'string' && row.values[0].trim().length > 25
+    );
   }
 
   private isEmpty(value: RawXlsxCellValue | undefined): boolean {
-    return value === null || value === undefined || (typeof value === 'string' && value.trim().length === 0);
+    return (
+      value === null ||
+      value === undefined ||
+      (typeof value === 'string' && value.trim().length === 0)
+    );
   }
 }

@@ -28,7 +28,9 @@ export class CsvExtractionService {
 
   async extractDataFromCsv(input: AssetFileInput): Promise<ExtractionResult> {
     try {
-      this.logger.log('starting csv extraction', 'CsvExtractionService', { filename: input.filename });
+      this.logger.log('starting csv extraction', 'CsvExtractionService', {
+        filename: input.filename,
+      });
       const { records, warnings } = await this.processCsvStream(input);
 
       return {
@@ -49,7 +51,9 @@ export class CsvExtractionService {
     }
   }
 
-  private async processCsvStream(input: AssetFileInput): Promise<{ records: ExtractedAssetRecord[]; warnings: string[] }> {
+  private async processCsvStream(
+    input: AssetFileInput,
+  ): Promise<{ records: ExtractedAssetRecord[]; warnings: string[] }> {
     return new Promise((resolve, reject) => {
       const records: ExtractedAssetRecord[] = [];
       const warnings: string[] = [];
@@ -62,7 +66,8 @@ export class CsvExtractionService {
           headers = normalizeCsvHeaders([...headers, header]);
           return headers[headers.length - 1];
         },
-        mapValues: ({ value }) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim()),
+        mapValues: ({ value }) =>
+          typeof value === 'string' ? value.trim() : String(value ?? '').trim(),
       });
 
       parser.on('headers', (parsedHeaders: string[]) => {
@@ -83,10 +88,14 @@ export class CsvExtractionService {
             failures.forEach((failure) => {
               const warning = `row ${failure.rowIndex}: ${failure.reason}`;
               warnings.push(warning);
-              this.logger.warn('invalid csv row skipped', 'CsvExtractionService', {
-                filename: input.filename,
-                ...failure,
-              });
+              this.logger.warn(
+                'invalid csv row skipped',
+                'CsvExtractionService',
+                {
+                  filename: input.filename,
+                  ...failure,
+                },
+              );
             });
             return;
           }
@@ -95,12 +104,16 @@ export class CsvExtractionService {
         } catch (error) {
           const warning = `row ${rowIndex}: ${error instanceof Error ? error.message : String(error)}`;
           warnings.push(warning);
-          this.logger.warn('csv row processing failed', 'CsvExtractionService', {
-            filename: input.filename,
-            rowIndex,
-            cause: error instanceof Error ? error.message : String(error),
-            rawData: data,
-          });
+          this.logger.warn(
+            'csv row processing failed',
+            'CsvExtractionService',
+            {
+              filename: input.filename,
+              rowIndex,
+              cause: error instanceof Error ? error.message : String(error),
+              rawData: data,
+            },
+          );
         }
       });
 
@@ -126,14 +139,20 @@ export class CsvExtractionService {
     });
   }
 
-  private toRawCsvRow(data: CsvParserRow, headers: string[], rowIndex: number): RawCsvRow {
+  private toRawCsvRow(
+    data: CsvParserRow,
+    headers: string[],
+    rowIndex: number,
+  ): RawCsvRow {
     const extraKeys = Object.keys(data).filter((key) => !headers.includes(key));
     return {
       headers,
       rowIndex,
       values: headers.map((header) => data[header] ?? ''),
       extraValues: extraKeys.map((key) => data[key] ?? ''),
-      raw: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value ?? ''])),
+      raw: Object.fromEntries(
+        Object.entries(data).map(([key, value]) => [key, value ?? '']),
+      ),
     };
   }
 }

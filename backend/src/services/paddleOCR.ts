@@ -10,7 +10,9 @@ export class PaddleOcrService {
 
   async extractTextFromPdf(input: AssetFileInput): Promise<OcrResult> {
     try {
-      this.logger.log('starting paddleocr extraction', 'PaddleOcrService', { filename: input.filename });
+      this.logger.log('starting paddleocr extraction', 'PaddleOcrService', {
+        filename: input.filename,
+      });
       const decoded = input.buffer.toString('utf8');
       const text = this.extractDummyText(decoded);
 
@@ -28,11 +30,16 @@ export class PaddleOcrService {
   }
 
   private extractDummyText(decodedPdf: string): string {
-    const explicitText = decodedPdf.match(/OCR_TEXT:\s*([\s\S]*)/i)?.[1]?.trim();
+    const explicitText = decodedPdf
+      .match(/OCR_TEXT:\s*([\s\S]*)/i)?.[1]
+      ?.trim();
     if (explicitText) {
       return explicitText;
     }
 
-    return decodedPdf.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    return decodedPdf
+      .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }

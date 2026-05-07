@@ -33,12 +33,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = this.getStatus(exception);
     const body = this.createResponse(exception, request.url);
 
-    this.logger.error(body.error.message, exception instanceof Error ? exception.stack : undefined, 'HttpExceptionFilter', {
-      code: body.error.code,
-      path: request.url,
-      method: request.method,
-      status,
-    });
+    this.logger.error(
+      body.error.message,
+      exception instanceof Error ? exception.stack : undefined,
+      'HttpExceptionFilter',
+      {
+        code: body.error.code,
+        path: request.url,
+        method: request.method,
+        status,
+      },
+    );
 
     response.status(status).json(body);
   }
@@ -55,7 +60,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
     return HttpStatus.INTERNAL_SERVER_ERROR;
   }
 
-  private createResponse(exception: unknown, path: string): StandardErrorResponse {
+  private createResponse(
+    exception: unknown,
+    path: string,
+  ): StandardErrorResponse {
     if (exception instanceof ApplicationError) {
       return {
         success: false,

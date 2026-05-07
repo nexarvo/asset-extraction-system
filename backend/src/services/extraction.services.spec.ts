@@ -1,6 +1,10 @@
 import * as XLSX from 'xlsx';
 import { AppLoggerService } from '../core/app-logger.service';
-import { RawCsvRow, RawXlsxRow, PdfExtractionStrategy } from '../utils/extraction.types';
+import {
+  RawCsvRow,
+  RawXlsxRow,
+  PdfExtractionStrategy,
+} from '../utils/extraction.types';
 import { CsvRowValidator, normalizeCsvHeaders } from '../utils/csv.utils';
 import { XlsxRowValidator, normalizeXlsxHeaders } from '../utils/xlsx.utils';
 import { CsvAssetMapperService } from './csvAssetMapper.service';
@@ -47,14 +51,18 @@ describe('Extraction services', () => {
       buffer: Buffer.from(' Asset ID , Asset Name ,Asset ID\nA-1,Laptop,DUP'),
     });
 
-    expect(result.records).toEqual([{ asset_id: 'A-1', asset_name: 'Laptop', asset_id_2: 'DUP' }]);
+    expect(result.records).toEqual([
+      { asset_id: 'A-1', asset_name: 'Laptop', asset_id_2: 'DUP' },
+    ]);
   });
 
   it('logs malformed CSV rows and continues extraction', async () => {
     const service = new CsvExtractionService(logger, csvAssetMapperService);
     const result = await service.extractDataFromCsv({
       filename: 'assets.csv',
-      buffer: Buffer.from('assetId,name\nA-1,Laptop\nBROKEN\nA-2,Monitor,EXTRA\nA-3,Keyboard'),
+      buffer: Buffer.from(
+        'assetId,name\nA-1,Laptop\nBROKEN\nA-2,Monitor,EXTRA\nA-3,Keyboard',
+      ),
     });
 
     expect(result.records).toEqual([
@@ -98,7 +106,11 @@ describe('Extraction services', () => {
   });
 
   it('deduplicates normalized CSV headers', () => {
-    expect(normalizeCsvHeaders(['Asset ID', ' asset id ', ''])).toEqual(['asset_id', 'asset_id_2', 'column_3']);
+    expect(normalizeCsvHeaders(['Asset ID', ' asset id ', ''])).toEqual([
+      'asset_id',
+      'asset_id_2',
+      'column_3',
+    ]);
   });
 
   it('processes a large CSV payload through the streaming parser', async () => {
@@ -116,30 +128,50 @@ describe('Extraction services', () => {
 
   it('processes spreadsheet files successfully', async () => {
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([{ assetId: 'A-1', name: 'Laptop' }]);
+    const worksheet = XLSX.utils.json_to_sheet([
+      { assetId: 'A-1', name: 'Laptop' },
+    ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Assets');
 
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'assets.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
-    expect(result.records).toEqual([{ sheetName: 'Assets', assetid: 'A-1', name: 'Laptop' }]);
+    expect(result.records).toEqual([
+      { sheetName: 'Assets', assetid: 'A-1', name: 'Laptop' },
+    ]);
   });
 
   it('normalizes inconsistent spreadsheet headers', async () => {
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet([[' Asset ID ', 'Asset Name', 'Asset ID'], ['A-1', 'Laptop', 'DUP']]);
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      [' Asset ID ', 'Asset Name', 'Asset ID'],
+      ['A-1', 'Laptop', 'DUP'],
+    ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Assets');
 
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'assets.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
-    expect(result.records).toEqual([{ sheetName: 'Assets', asset_id: 'A-1', asset_name: 'Laptop', asset_id_2: 'DUP' }]);
+    expect(result.records).toEqual([
+      {
+        sheetName: 'Assets',
+        asset_id: 'A-1',
+        asset_name: 'Laptop',
+        asset_id_2: 'DUP',
+      },
+    ]);
   });
 
   it('logs malformed spreadsheet rows and continues extraction', async () => {
@@ -156,7 +188,10 @@ describe('Extraction services', () => {
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'assets.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
     expect(result.records).toEqual([
@@ -182,15 +217,29 @@ describe('Extraction services', () => {
         'Revenues (Thousands Dollars)',
         'Average Price (cents/kWh)',
       ],
-      ['Akiachak Native Community Electric', 'AK', 'Cooperative', 'Y', 254, 1976, 1269.4, 64.240891],
-      ['Short form utilities are only published at the utility level in table 10 (total sector)'],
+      [
+        'Akiachak Native Community Electric',
+        'AK',
+        'Cooperative',
+        'Y',
+        254,
+        1976,
+        1269.4,
+        64.240891,
+      ],
+      [
+        'Short form utilities are only published at the utility level in table 10 (total sector)',
+      ],
     ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Table 10');
 
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'table_10.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
     expect(result.records).toEqual([
@@ -211,13 +260,24 @@ describe('Extraction services', () => {
 
   it('preserves sheet context for multi-sheet spreadsheets', async () => {
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['assetId'], ['A-1']]), 'Hardware');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['assetId'], ['S-1']]), 'Software');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([['assetId'], ['A-1']]),
+      'Hardware',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([['assetId'], ['S-1']]),
+      'Software',
+    );
 
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'assets.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
     expect(result.records).toEqual([
@@ -238,7 +298,9 @@ describe('Extraction services', () => {
 
     const failures = validator.validate(row);
 
-    expect(failures.map((failure) => failure.reason)).toEqual(['Extra columns detected: 1.']);
+    expect(failures.map((failure) => failure.reason)).toEqual([
+      'Extra columns detected: 1.',
+    ]);
   });
 
   it('maps raw spreadsheet rows into structured asset records', () => {
@@ -250,11 +312,20 @@ describe('Extraction services', () => {
       rowIndex: 2,
     });
 
-    expect(record).toEqual({ sheetName: 'Assets', assetid: 'A-1', name: 'Laptop', location: null });
+    expect(record).toEqual({
+      sheetName: 'Assets',
+      assetid: 'A-1',
+      name: 'Laptop',
+      location: null,
+    });
   });
 
   it('deduplicates normalized spreadsheet headers', () => {
-    expect(normalizeXlsxHeaders(['Asset ID', ' asset id ', '!!!'])).toEqual(['asset_id', 'asset_id_2', 'column_3']);
+    expect(normalizeXlsxHeaders(['Asset ID', ' asset id ', '!!!'])).toEqual([
+      'asset_id',
+      'asset_id_2',
+      'column_3',
+    ]);
   });
 
   it('processes a large spreadsheet without sheet_to_json conversion', async () => {
@@ -263,17 +334,28 @@ describe('Extraction services', () => {
     for (let index = 0; index < 5000; index += 1) {
       rows.push([`A-${index}`, `Asset ${index}`]);
     }
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), 'Assets');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet(rows),
+      'Assets',
+    );
     const sheetToJsonSpy = jest.spyOn(XLSX.utils, 'sheet_to_json');
 
     const service = new XlsxExtractionService(logger, xlsxAssetMapperService);
     const result = await service.extractDataFromXlsx({
       filename: 'large-assets.xlsx',
-      buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer,
     });
 
     expect(result.records).toHaveLength(5000);
-    expect(result.records[0]).toEqual({ sheetName: 'Assets', assetid: 'A-0', name: 'Asset 0' });
+    expect(result.records[0]).toEqual({
+      sheetName: 'Assets',
+      assetid: 'A-0',
+      name: 'Asset 0',
+    });
     expect(sheetToJsonSpy).not.toHaveBeenCalled();
   });
 

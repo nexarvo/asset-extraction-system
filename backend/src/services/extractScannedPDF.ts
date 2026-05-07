@@ -17,8 +17,14 @@ export class ScannedPdfExtractionService {
     private readonly logger: AppLoggerService,
   ) {}
 
-  async extractDataFromScannedPdf(input: AssetFileInput): Promise<ExtractionResult> {
-    this.logger.log('starting scanned pdf extraction', 'ScannedPdfExtractionService', { filename: input.filename });
+  async extractDataFromScannedPdf(
+    input: AssetFileInput,
+  ): Promise<ExtractionResult> {
+    this.logger.log(
+      'starting scanned pdf extraction',
+      'ScannedPdfExtractionService',
+      { filename: input.filename },
+    );
     const ocrResult = await this.paddleOcrService.extractTextFromPdf(input);
     const records = this.mapOcrTextToRecords(ocrResult.text);
 
@@ -28,7 +34,9 @@ export class ScannedPdfExtractionService {
       strategy: PdfExtractionStrategy.Scanned,
       text: ocrResult.text,
       records,
-      metadata: createExtractionMetadata(records.length, [`ocrConfidence:${ocrResult.confidence}`]),
+      metadata: createExtractionMetadata(records.length, [
+        `ocrConfidence:${ocrResult.confidence}`,
+      ]),
     };
   }
 

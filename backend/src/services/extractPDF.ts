@@ -17,13 +17,19 @@ export class PdfExtractionService {
   async extractDataFromPdf(input: AssetFileInput): Promise<ExtractionResult> {
     try {
       const isScanned = this.isLikelyScannedPdf(input.buffer);
-      this.logger.log('selected pdf extraction strategy', 'PdfExtractionService', {
-        filename: input.filename,
-        strategy: isScanned ? 'scanned' : 'digital',
-      });
+      this.logger.log(
+        'selected pdf extraction strategy',
+        'PdfExtractionService',
+        {
+          filename: input.filename,
+          strategy: isScanned ? 'scanned' : 'digital',
+        },
+      );
 
       if (isScanned) {
-        return this.scannedPdfExtractionService.extractDataFromScannedPdf(input);
+        return this.scannedPdfExtractionService.extractDataFromScannedPdf(
+          input,
+        );
       }
 
       return this.digitalPdfExtractionService.extractDataFromDigitalPdf(input);

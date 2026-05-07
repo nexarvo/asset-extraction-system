@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ExtractedAssetRecord, RawXlsxCellValue, RawXlsxRow } from '../utils/extraction.types';
+import {
+  ExtractedAssetRecord,
+  RawXlsxCellValue,
+  RawXlsxRow,
+} from '../utils/extraction.types';
 
 @Injectable()
 export class XlsxAssetMapperService {
@@ -13,7 +17,9 @@ export class XlsxAssetMapperService {
     );
   }
 
-  private normalizeValue(value: RawXlsxCellValue | undefined): string | number | boolean | null {
+  private normalizeValue(
+    value: RawXlsxCellValue | undefined,
+  ): string | number | boolean | null {
     if (value === undefined || value === null) {
       return null;
     }

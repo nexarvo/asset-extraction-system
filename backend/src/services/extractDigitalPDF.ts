@@ -15,9 +15,15 @@ import { createExtractionMetadata } from '../utils/file.utils';
 export class DigitalPdfExtractionService {
   constructor(private readonly logger: AppLoggerService) {}
 
-  async extractDataFromDigitalPdf(input: AssetFileInput): Promise<ExtractionResult> {
+  async extractDataFromDigitalPdf(
+    input: AssetFileInput,
+  ): Promise<ExtractionResult> {
     try {
-      this.logger.log('starting digital pdf extraction', 'DigitalPdfExtractionService', { filename: input.filename });
+      this.logger.log(
+        'starting digital pdf extraction',
+        'DigitalPdfExtractionService',
+        { filename: input.filename },
+      );
       const text = this.extractText(input.buffer);
       const records = this.mapTextToRecords(text);
 
@@ -38,7 +44,11 @@ export class DigitalPdfExtractionService {
   }
 
   private extractText(buffer: Buffer): string {
-    return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    return buffer
+      .toString('utf8')
+      .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private mapTextToRecords(text: string): ExtractedAssetRecord[] {

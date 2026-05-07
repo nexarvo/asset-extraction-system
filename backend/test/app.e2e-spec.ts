@@ -43,31 +43,46 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records).toEqual([{ assetid: 'A-1', name: 'Laptop' }]);
+    expect(response.body.result.records).toEqual([
+      { assetid: 'A-1', name: 'Laptop' },
+    ]);
   });
 
   it('/extractions/xlsx (POST) uploads and extracts spreadsheets', async () => {
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([{ assetId: 'A-2', name: 'Monitor' }]);
+    const worksheet = XLSX.utils.json_to_sheet([
+      { assetId: 'A-2', name: 'Monitor' },
+    ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Assets');
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const buffer = XLSX.write(workbook, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    }) as Buffer;
 
     const response = await request(app.getHttpServer())
       .post('/extractions/xlsx')
       .attach('file', buffer, {
         filename: 'assets.xlsx',
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       .expect(201);
 
-    expect(response.body.result.records).toEqual([{ sheetName: 'Assets', assetid: 'A-2', name: 'Monitor' }]);
+    expect(response.body.result.records).toEqual([
+      { sheetName: 'Assets', assetid: 'A-2', name: 'Monitor' },
+    ]);
   });
 
   it('/extractions/xlsx (POST) accepts valid spreadsheets with unreliable text/plain MIME', async () => {
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet([{ assetId: 'A-3', name: 'Keyboard' }]);
+    const worksheet = XLSX.utils.json_to_sheet([
+      { assetId: 'A-3', name: 'Keyboard' },
+    ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Assets');
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const buffer = XLSX.write(workbook, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    }) as Buffer;
 
     const response = await request(app.getHttpServer())
       .post('/extractions/xlsx')
@@ -77,7 +92,9 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records).toEqual([{ sheetName: 'Assets', assetid: 'A-3', name: 'Keyboard' }]);
+    expect(response.body.result.records).toEqual([
+      { sheetName: 'Assets', assetid: 'A-3', name: 'Keyboard' },
+    ]);
   });
 
   it('/extractions/pdf (POST) uploads and routes PDF files', async () => {
@@ -126,7 +143,10 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records[0]).toEqual({ assetid: 'BUFFER-1', name: 'Camera' });
+    expect(response.body.result.records[0]).toEqual({
+      assetid: 'BUFFER-1',
+      name: 'Camera',
+    });
   });
 
   afterEach(async () => {

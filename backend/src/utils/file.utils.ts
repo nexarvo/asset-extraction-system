@@ -27,7 +27,10 @@ export function getSupportedFileType(input: AssetFileInput): SupportedFileType {
   throw new Error(`Unsupported file extension: ${extension}`);
 }
 
-export function createExtractionMetadata(rowCount: number, warnings: string[] = []) {
+export function createExtractionMetadata(
+  rowCount: number,
+  warnings: string[] = [],
+) {
   return {
     rowCount,
     warnings,
