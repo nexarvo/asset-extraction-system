@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
 import { AppLoggerService } from '../core/app-logger.service';
-import { PdfExtractionStrategy } from '../utils/extraction.types';
+import { RawCsvRow, PdfExtractionStrategy } from '../utils/extraction.types';
+import { CsvRowValidator, normalizeCsvHeaders } from '../utils/csv.utils';
+import { CsvAssetMapperService } from './csvAssetMapper.service';
 import { CsvExtractionService } from './extractCSV';
 import { DigitalPdfExtractionService } from './extractDigitalPDF';
 import { PdfExtractionService } from './extractPDF';
@@ -10,6 +12,7 @@ import { PaddleOcrService } from './paddleOCR';
 
 describe('Extraction services', () => {
   const logger = new AppLoggerService();
+  const csvAssetMapperService = new CsvAssetMapperService();
 
   beforeEach(() => {
     jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -21,17 +24,91 @@ describe('Extraction services', () => {
   });
 
   it('processes structured CSV files successfully', async () => {
-    const service = new CsvExtractionService(logger);
+    const service = new CsvExtractionService(logger, csvAssetMapperService);
     const result = await service.extractDataFromCsv({
       filename: 'assets.csv',
       buffer: Buffer.from('assetId,name\nA-1,Laptop\nA-2,Monitor'),
     });
 
     expect(result.records).toEqual([
-      { assetId: 'A-1', name: 'Laptop' },
-      { assetId: 'A-2', name: 'Monitor' },
+      { assetid: 'A-1', name: 'Laptop' },
+      { assetid: 'A-2', name: 'Monitor' },
     ]);
     expect(result.metadata.rowCount).toBe(2);
+  });
+
+  it('normalizes inconsistent CSV headers', async () => {
+    const service = new CsvExtractionService(logger, csvAssetMapperService);
+    const result = await service.extractDataFromCsv({
+      filename: 'assets.csv',
+      buffer: Buffer.from(' Asset ID , Asset Name ,Asset ID\nA-1,Laptop,DUP'),
+    });
+
+    expect(result.records).toEqual([{ asset_id: 'A-1', asset_name: 'Laptop', asset_id_2: 'DUP' }]);
+  });
+
+  it('logs malformed CSV rows and continues extraction', async () => {
+    const service = new CsvExtractionService(logger, csvAssetMapperService);
+    const result = await service.extractDataFromCsv({
+      filename: 'assets.csv',
+      buffer: Buffer.from('assetId,name\nA-1,Laptop\nBROKEN\nA-2,Monitor,EXTRA\nA-3,Keyboard'),
+    });
+
+    expect(result.records).toEqual([
+      { assetid: 'A-1', name: 'Laptop' },
+      { assetid: 'A-3', name: 'Keyboard' },
+    ]);
+    expect(result.metadata.warnings).toEqual([
+      'row 3: Missing columns: name.',
+      'row 4: Extra columns detected: 1.',
+    ]);
+  });
+
+  it('detects mismatched CSV column counts in the row validator', () => {
+    const validator = new CsvRowValidator();
+    const row: RawCsvRow = {
+      headers: ['assetid', 'name'],
+      values: ['A-1', ''],
+      extraValues: ['unexpected'],
+      rowIndex: 2,
+      raw: { assetid: 'A-1', _2: 'unexpected' },
+    };
+
+    const failures = validator.validate(row);
+
+    expect(failures.map((failure) => failure.reason)).toEqual([
+      'Missing columns: name.',
+      'Extra columns detected: 1.',
+    ]);
+  });
+
+  it('maps raw CSV rows into structured asset records', () => {
+    const record = csvAssetMapperService.mapRow({
+      headers: ['assetid', 'name', 'location'],
+      values: ['A-1', 'Laptop', ''],
+      extraValues: [],
+      rowIndex: 2,
+      raw: { assetid: 'A-1', name: 'Laptop', location: '' },
+    });
+
+    expect(record).toEqual({ assetid: 'A-1', name: 'Laptop', location: null });
+  });
+
+  it('deduplicates normalized CSV headers', () => {
+    expect(normalizeCsvHeaders(['Asset ID', ' asset id ', ''])).toEqual(['asset_id', 'asset_id_2', 'column_3']);
+  });
+
+  it('processes a large CSV payload through the streaming parser', async () => {
+    const service = new CsvExtractionService(logger, csvAssetMapperService);
+    const largeDescription = 'x'.repeat(51 * 1024 * 1024);
+    const result = await service.extractDataFromCsv({
+      filename: 'large-assets.csv',
+      buffer: Buffer.from(`assetId,description\nA-1,${largeDescription}`),
+    });
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].assetid).toBe('A-1');
+    expect(result.metadata.rowCount).toBe(1);
   });
 
   it('processes spreadsheet files successfully', async () => {

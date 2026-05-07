@@ -5,6 +5,7 @@ import { AppLoggerService } from './core/app-logger.service';
 import { ExtractionController } from './controllers/extraction.controller';
 import { RequestLoggingMiddleware } from './middlewares/request-logging.middleware';
 import { ExtractionRepository } from './repositories/extraction.repository';
+import { CsvAssetMapperService } from './services/csvAssetMapper.service';
 import { CsvExtractionService } from './services/extractCSV';
 import { DigitalPdfExtractionService } from './services/extractDigitalPDF';
 import { PdfExtractionService } from './services/extractPDF';
@@ -19,6 +20,7 @@ import { PaddleOcrService } from './services/paddleOCR';
     AppService,
     AppLoggerService,
     ExtractionRepository,
+    CsvAssetMapperService,
     CsvExtractionService,
     XlsxExtractionService,
     PdfExtractionService,

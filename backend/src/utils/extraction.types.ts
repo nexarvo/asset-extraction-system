@@ -14,6 +14,14 @@ export type ExtractedCellValue = string | number | boolean | null;
 
 export type ExtractedAssetRecord = Record<string, ExtractedCellValue>;
 
+export interface RawCsvRow {
+  readonly headers: string[];
+  readonly values: string[];
+  readonly rowIndex: number;
+  readonly extraValues: string[];
+  readonly raw: Record<string, string>;
+}
+
 export interface AssetFileInput {
   readonly filename: string;
   readonly buffer: Buffer;

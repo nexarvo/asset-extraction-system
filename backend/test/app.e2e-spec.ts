@@ -43,7 +43,7 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records).toEqual([{ assetId: 'A-1', name: 'Laptop' }]);
+    expect(response.body.result.records).toEqual([{ assetid: 'A-1', name: 'Laptop' }]);
   });
 
   it('/extractions/xlsx (POST) uploads and extracts spreadsheets', async () => {
@@ -109,7 +109,7 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records[0]).toEqual({ assetId: 'BUFFER-1', name: 'Camera' });
+    expect(response.body.result.records[0]).toEqual({ assetid: 'BUFFER-1', name: 'Camera' });
   });
 
   afterEach(async () => {
