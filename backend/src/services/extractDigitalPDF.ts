@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import pdf = require('pdf-parse');
+import * as pdfjs from 'pdfjs-dist';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
@@ -10,11 +10,14 @@ import {
   PdfDocument,
   PdfExtractionStrategy,
   PdfPage,
+  PdfTextItem,
   SupportedFileType,
   TextBlock,
   TextBlockType,
 } from '../utils/extraction.types';
 import { createExtractionMetadata } from '../utils/file.utils';
+
+pdfjs.GlobalWorkerOptions.workerSrc = '';
 
 @Injectable()
 export class DigitalPdfExtractionService {
@@ -31,7 +34,7 @@ export class DigitalPdfExtractionService {
       );
 
       const pdfDocument = await this.parsePdf(input.buffer);
-      const records = this.extractRecordsFromPdf(pdfDocument);
+      const records = this.convertToRecords(pdfDocument);
 
       this.logger.log(
         'digital pdf extraction completed',
@@ -74,36 +77,26 @@ export class DigitalPdfExtractionService {
   }
 
   private async parsePdf(buffer: Buffer): Promise<PdfDocument> {
-    const data = await pdf(buffer, {
-      max: 0,
-      version: 'v1.10.100',
-    });
-
-    const totalPages = data.numpages;
-    const fullText = data.text ?? '';
-
-    this.logger.log(
-      'pdf text extracted',
-      'DigitalPdfExtractionService',
-      { totalPages, textLength: fullText.length },
-    );
-
-    const pageTexts = this.splitByPageMarkers(fullText, totalPages);
+    const uint8Array = new Uint8Array(buffer);
+    const loadingTask = pdfjs.getDocument({ data: uint8Array });
+    const pdf = await loadingTask.promise;
 
     const pages: PdfPage[] = [];
 
-    for (let i = 0; i < pageTexts.length; i++) {
-      const pageNum = i + 1;
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       this.logger.log(
         'parsing pdf page',
         'DigitalPdfExtractionService',
-        { pageNumber: pageNum, totalPages },
+        { pageNumber: pageNum, totalPages: pdf.numPages },
       );
 
-      const textBlocks = this.extractTextBlocks(pageTexts[i], pageNum);
+      const page = await pdf.getPage(pageNum);
+      const items = await this.extractTextItems(page);
+      const textBlocks = this.groupSpatially(items, pageNum);
 
       pages.push({
         pageNumber: pageNum,
+        items,
         textBlocks,
       });
     }
@@ -111,118 +104,158 @@ export class DigitalPdfExtractionService {
     return { pages };
   }
 
-  private splitByPageMarkers(text: string, totalPages: number): string[] {
-    if (totalPages === 1) {
-      return [text];
-    }
+  private async extractTextItems(page: pdfjs.PDFPage): Promise<PdfTextItem[]> {
+    const textContent = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1.0 });
 
-    const formFeedMatches = text.match(/\f/g);
-    const formFeedCount = formFeedMatches ? formFeedMatches.length : 0;
+    const items: PdfTextItem[] = [];
 
-    if (formFeedCount >= totalPages - 1) {
-      return text
-        .split(/\f/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
+    for (const item of textContent.items) {
+      if ('str' in item && item.str) {
+        const transform = item.transform;
+        const fontSize = Math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]);
 
-    const pagePatternMatches = text.match(/Page\s+(\d+)\s+of\s+\d+/gi);
-    if (pagePatternMatches && pagePatternMatches.length >= totalPages - 1) {
-      const parts: string[] = [];
-      const regex = /(Page\s+)(\d+)( of )(\d+)/gi;
-      let lastIndex = 0;
-      let match;
-      let pageNum = 1;
-
-      while ((match = regex.exec(text)) !== null) {
-        parts.push(text.slice(lastIndex, match.index).trim());
-        lastIndex = regex.lastIndex;
-        pageNum++;
+        items.push({
+          text: item.str,
+          x: transform[4],
+          y: viewport.height - transform[5],
+          width: item.width,
+          height: item.height,
+          fontSize: fontSize > 0 ? fontSize : undefined,
+        });
       }
-
-      if (lastIndex < text.length) {
-        parts.push(text.slice(lastIndex).trim());
-      }
-
-      return parts.filter(Boolean);
     }
 
-    const avgLength = Math.ceil(text.length / totalPages);
-    const pages: string[] = [];
-
-    for (let i = 0; i < totalPages; i++) {
-      const start = i * avgLength;
-      const end = i === totalPages - 1 ? text.length : (i + 1) * avgLength;
-      pages.push(text.slice(start, end).trim());
-    }
-
-    return pages;
+    return items;
   }
 
-  private extractTextBlocks(pageText: string, pageNumber: number): TextBlock[] {
-    const blocks: TextBlock[] = [];
-    const paragraphs = pageText.split(/\n\s*\n/);
-
-    for (const paragraph of paragraphs) {
-      const trimmedText = paragraph.trim();
-      if (!trimmedText) continue;
-
-      const blockType = this.determineBlockType(trimmedText);
-      blocks.push({
-        text: trimmedText,
-        type: blockType,
-      });
+  private groupSpatially(items: PdfTextItem[], pageNumber: number): TextBlock[] {
+    if (items.length === 0) {
+      return [];
     }
 
-    if (blocks.length === 0 && pageText.trim()) {
-      blocks.push({
-        text: pageText.trim(),
-        type: 'unknown' as TextBlockType,
-      });
+    const sortedByY = [...items].sort((a, b) => a.y - b.y);
+    const yBands = this.groupIntoYBands(sortedByY);
+
+    const blocks: TextBlock[] = [];
+
+    for (const band of yBands) {
+      const xClusters = this.groupByXGaps(band);
+
+      for (const cluster of xClusters) {
+        if (cluster.length === 0) continue;
+
+        const blockType = this.detectBlockType(cluster);
+        const text = cluster.map((item) => item.text).join(' ');
+        const boundingBox = this.computeBoundingBox(cluster);
+
+        blocks.push({
+          text,
+          type: blockType,
+          pageNumber,
+          items: cluster,
+          boundingBox,
+        });
+      }
     }
 
     return blocks;
   }
 
-  private determineBlockType(text: string): TextBlockType {
-    const firstLine = text.split('\n')[0]?.trim() ?? '';
+  private groupIntoYBands(items: PdfTextItem[]): PdfTextItem[][] {
+    if (items.length === 0) return [];
 
-    if (firstLine.length > 0 && firstLine.length < 100) {
-      const hasNumbers = /\d/.test(firstLine);
-      const isAllCaps = firstLine === firstLine.toUpperCase() && /[A-Z]/.test(firstLine);
+    const bands: PdfTextItem[][] = [];
+    let currentBand: PdfTextItem[] = [];
+    let currentY = items[0].y;
+    const yThreshold = 12;
 
-      if (isAllCaps && firstLine.length < 50) {
-        return 'header';
-      }
-
-      if (!hasNumbers && firstLine.length < 60) {
-        return 'header';
+    for (const item of items) {
+      if (Math.abs(item.y - currentY) > yThreshold) {
+        if (currentBand.length > 0) bands.push(currentBand);
+        currentBand = [item];
+        currentY = item.y;
+      } else {
+        currentBand.push(item);
       }
     }
 
-    if (text.includes('Footnotes') || text.includes('footnote')) {
-      return 'footer';
+    if (currentBand.length > 0) bands.push(currentBand);
+
+    return bands;
+  }
+
+  private groupByXGaps(band: PdfTextItem[]): PdfTextItem[][] {
+    if (band.length === 0) return [];
+
+    const sortedByX = [...band].sort((a, b) => a.x - b.x);
+    const clusters: PdfTextItem[][] = [];
+    let currentCluster: PdfTextItem[] = [];
+    let lastX = sortedByX[0].x;
+    const xGapThreshold = 25;
+
+    for (const item of sortedByX) {
+      if (item.x - lastX > xGapThreshold) {
+        if (currentCluster.length > 0) clusters.push(currentCluster);
+        currentCluster = [item];
+      } else {
+        currentCluster.push(item);
+      }
+      lastX = item.x;
     }
 
-    const tableIndicators = ['\t', '  ', '|'];
-    const hasTableStructure = tableIndicators.some((indicator) => text.includes(indicator));
+    if (currentCluster.length > 0) clusters.push(currentCluster);
 
-    if (hasTableStructure && text.split('\n').length > 1) {
+    return clusters;
+  }
+
+  private detectBlockType(items: PdfTextItem[]): TextBlockType {
+    if (items.length < 3) return 'paragraph';
+
+    const xValues = items.map((i) => i.x);
+    const yValues = items.map((i) => i.y);
+
+    const xVariance = this.computeVariance(xValues);
+    const yVariance = this.computeVariance(yValues);
+
+    if (xVariance > 5000 && yVariance < 100) {
       return 'table';
+    }
+
+    const avgFontSize = items.reduce((sum, i) => sum + (i.fontSize ?? 0), 0) / items.length;
+    if (avgFontSize > 14 && items.length <= 2) {
+      return 'header';
     }
 
     return 'paragraph';
   }
 
-  private extractRecordsFromPdf(pdfDocument: PdfDocument): ExtractedAssetRecord[] {
+  private computeVariance(values: number[]): number {
+    if (values.length === 0) return 0;
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+  }
+
+  private computeBoundingBox(items: PdfTextItem[]) {
+    return {
+      xMin: Math.min(...items.map((i) => i.x)),
+      xMax: Math.max(...items.map((i) => i.x + (i.width ?? 0))),
+      yMin: Math.min(...items.map((i) => i.y)),
+      yMax: Math.max(...items.map((i) => i.y + (i.height ?? 0))),
+    };
+  }
+
+  private convertToRecords(pdfDocument: PdfDocument): ExtractedAssetRecord[] {
     const records: ExtractedAssetRecord[] = [];
 
     for (const page of pdfDocument.pages) {
       for (const block of page.textBlocks) {
         records.push({
-          pageNumber: page.pageNumber,
+          pageNumber: block.pageNumber,
           blockType: block.type,
           text: block.text,
+          items: block.items,
+          boundingBox: block.boundingBox,
         });
       }
     }

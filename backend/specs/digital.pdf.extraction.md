@@ -1,29 +1,37 @@
-Digital PDF Extraction Improvement (Correct Parsing + Structured Extraction) - Spec
+Here is an updated, stronger version of your spec incorporating the missing architectural correctness (layout preservation, structured extraction layer, and clearer separation of responsibilities).
+
+⸻
+
+Digital PDF Extraction Improvement (Layout-Aware Structured Extraction) - Spec
+
+⸻
 
 1. Goal & Context
 
-- Why: The current implementation incorrectly treats PDF buffers as UTF-8 text and performs naive sanitization and line splitting, which leads to loss of structure, incorrect extraction, and inability to handle financial documents (tables, multi-column layouts, reports).
-- Goal: Replace the current approach with a correct PDF parsing + structured extraction pipeline that preserves document structure, supports financial document complexity, and enables downstream asset extraction with confidence and provenance.
+- Why: The current implementation incorrectly treats PDF buffers as UTF-8 text and applies lossy sanitization + line splitting, which destroys layout structure (tables, columns, headers) and makes financial document extraction unreliable.
+- Goal: Replace the current approach with a layout-aware PDF parsing pipeline that preserves positional information, supports structured document modeling, and enables downstream semantic/asset extraction with confidence + provenance tracking.
 
 ⸻
 
 2. Scope & Boundaries
 
 - In Scope:
-  - Replace raw buffer-to-text conversion with proper PDF parsing
-  - Introduce PDF parsing library integration (pdf-parse or pdfjs-dist)
-  - Add structured document representation (pages, blocks, sections)
-  - Remove naive UTF-8 conversion and regex sanitization approach
-  - Introduce extraction of structured text blocks instead of raw lines
-  - Prepare output for downstream asset extraction pipeline
-  - Preserve page-level metadata for auditability
+  - Replace raw buffer-to-text conversion with proper PDF parsing (pdfjs-dist preferred)
+  - Introduce layout-aware parsing (text items with coordinates)
+  - Build structured document model (pages, blocks, text items)
+  - Remove all regex-based sanitization and line-splitting logic
+  - Introduce block + position-based grouping (not newline-based)
+  - Preserve page + positional metadata for auditability
+  - Prepare structured output for downstream extraction pipeline
+  - Add error handling for malformed PDFs
+  - Add logging for parsing progress per page
 - Out of Scope:
   - OCR for scanned PDFs (handled separately)
   - XLSX/CSV pipeline changes
   - Frontend changes
   - Database schema changes
   - LLM prompt optimization
-  - Deployment or infrastructure concerns
+  - Deployment / infrastructure concerns
 
 ⸻
 
@@ -32,16 +40,15 @@ Digital PDF Extraction Improvement (Correct Parsing + Structured Extraction) - S
 - Tech stack:
   - NestJS
   - TypeScript (strict mode)
-  - PDF parsing library:
-    - Preferred: pdf-parse OR pdfjs-dist
+  - PDF parsing: pdfjs-dist (preferred) or pdf-parse (fallback)
   - Node.js Buffer handling
 - Security:
-  - Safe handling of large PDF buffers
-  - Prevent memory overflow for large documents
+  - Safe handling of large PDFs (memory-aware processing)
+  - Avoid full-string materialization where possible
 - Dependencies:
   - Existing DigitalPdfExtractionService
-  - Existing ExtractionResult and ExtractedAssetRecord
-  - Centralized logging service
+  - ExtractionResult, ExtractedAssetRecord
+  - Centralized logger service
   - Centralized error handling system
 
 ⸻
@@ -50,16 +57,11 @@ Digital PDF Extraction Improvement (Correct Parsing + Structured Extraction) - S
 
 API / Interface (No Change)
 
-Input:
-
 AssetFileInput {
 filename: string;
 mimeType: string;
 buffer: Buffer;
 }
-
-Output (enhanced internally, same contract externally):
-
 ExtractionResult {
 sourceFile: string;
 fileType: SupportedFileType;
@@ -70,21 +72,33 @@ metadata: ExtractionMetadata;
 
 ⸻
 
-New Internal Data Model
+New Internal Data Model (Improved)
 
-Introduce structured PDF representation:
+Layout-Aware Model (CRITICAL IMPROVEMENT)
 
 PdfDocument {
 pages: PdfPage[];
 }
 PdfPage {
 pageNumber: number;
-textBlocks: TextBlock[];
+items: PdfTextItem[];
 }
+PdfTextItem {
+text: string;
+x: number;
+y: number;
+width?: number;
+height?: number;
+fontSize?: number;
+}
+
+Derived Structure Layer
+
 TextBlock {
 text: string;
 type: 'paragraph' | 'header' | 'table' | 'footer' | 'unknown';
-position?: {
+pageNumber: number;
+boundingBox?: {
 x: number;
 y: number;
 };
@@ -94,130 +108,163 @@ y: number;
 
 Business Logic Changes
 
-1. Replace Raw UTF-8 Extraction
+1. Replace Raw UTF-8 Extraction (Critical Fix)
 
-Remove:
+❌ Remove:
 
 buffer.toString('utf8')
 
-Replace with:
+✔ Replace with:
 
-- PDF parsing library extraction
+- pdfjs-dist document loading
+- page-wise extraction of text items
 
 ⸻
 
-2. Introduce PDF Parsing Layer
+2. Introduce Layout-Aware PDF Parsing Layer
 
 New function:
 
-- parsePdf(buffer): PdfDocument
+parsePdf(buffer): PdfDocument
 
 Responsibilities:
 
 - extract pages
-- extract text content per page
-- preserve structure if available
-- avoid flattening content prematurely
+- extract text items with coordinates
+- preserve reading order using positional clustering
+- avoid flattening text prematurely
 
 ⸻
 
-3. Remove Lossy Text Sanitization
+3. Remove Lossy Sanitization
 
-Remove:
+❌ Remove:
 
-- regex-based character stripping
+- regex character stripping
 - whitespace collapsing
+- newline-based normalization
 
-Instead:
+✔ Instead:
 
 - preserve raw extracted text
-- normalize only at block level (if needed)
+- normalize only inside block formation stage
 
 ⸻
 
-4. Structured Block Extraction
+4. Replace Line-Based Parsing (Major Fix)
 
-Convert parsed PDF into:
-
-- page-based blocks
-- logical sections
-
-This enables:
-
-- table detection
-- header recognition
-- section-based extraction
-
-⸻
-
-5. Replace Line-Based Mapping
-
-Current:
+❌ Remove:
 
 text.split("\n")
 
-Replace with:
+✔ Replace with:
 
-- block-based mapping
-- page-aware processing
-- context-preserving transformation
-
-⸻
-
-6. Prepare for Asset Extraction Layer
-
-This service should ONLY:
-
-- extract structured text
-- NOT infer assets
-
-Downstream responsibility:
-
-- asset detection
-- value extraction
-- confidence scoring
+- spatial clustering of text items
+- grouping by:
+  - Y-axis proximity (rows)
+  - X-axis alignment (columns)
 
 ⸻
 
-7. Preserve Auditability
+5. Introduce Block Formation Layer (NEW CRITICAL LAYER)
 
-Each extracted block must retain:
+buildTextBlocks(pages: PdfPage[]): TextBlock[]
+
+Responsibilities:
+
+- group text items into logical blocks
+- detect:
+  - paragraphs
+  - headers (font size / position heuristics)
+  - tables (grid alignment detection)
+- preserve spatial relationships
+
+⸻
+
+6. Explicit Separation of Concerns
+
+Pipeline must be strictly:
+
+PDF Buffer
+→ Layout Parser (pdfjs-dist)
+→ Page + TextItem Model
+→ Block Builder (spatial grouping)
+→ Structured Document Output
+→ Downstream Asset Extraction (NOT part of this service)
+
+⸻
+
+7. NO Asset Inference in This Layer
+
+This service must NOT:
+
+- extract assets
+- infer values
+- assign confidence scores
+
+It ONLY produces:
+
+structured document representation
+
+⸻
+
+8. Preserve Full Auditability
+
+Each extracted unit must retain:
 
 - page number
-- source text
-- block type
-- positional metadata (if available)
+- coordinates (x/y)
+- raw text
+- derived block type
+
+⸻
+
+9. Improve Table Awareness (Layout-Based)
+
+Instead of keyword detection:
+
+❌ Remove:
+
+- includes('|')
+- includes('\t')
+
+✔ Replace with:
+
+- alignment-based detection using:
+  - x-axis clustering
+  - consistent row spacing
 
 ⸻
 
 5. Implementation Steps
 
-- 1. Replace UTF-8 buffer conversion with PDF parsing library (pdf-parse or pdfjs-dist)
-- 2. Implement parsePdf() function returning structured PdfDocument
-- 3. Introduce PdfPage and TextBlock data structures
-- 4. Remove regex-based sanitization logic
-- 5. Replace mapTextToRecords with structured block mapping
-- 6. Preserve page-level metadata in extraction result
-- 7. Ensure service does NOT perform asset inference
-- 8. Add error handling for malformed PDFs
-- 9. Add logging for page-level parsing progress
-- 10. Add tests for:
-  - multi-page PDFs
-  - table-heavy PDFs
-  - malformed/corrupted PDFs
-  - large document handling
-- 11. Update documentation for PDF pipeline architecture
+- 1. Replace pdf-parse usage with pdfjs-dist (preferred)
+- 2. Implement parsePdf() returning PdfDocument with text items + coordinates
+- 3. Remove all UTF-8 string conversion logic
+- 4. Implement spatial clustering algorithm for grouping text items
+- 5. Build buildTextBlocks() for layout-aware grouping
+- 6. Remove all regex-based sanitization logic
+- 7. Replace line-based parsing with block-based pipeline
+- 8. Ensure service does NOT perform any semantic extraction
+- 9. Add structured logging per page parsing
+- 10. Add error handling for corrupted PDFs
+- 11. Add tests for:
+  - multi-column PDFs
+  - table-heavy financial reports
+  - large PDFs (>50MB)
+  - malformed PDFs
+- 12. Update documentation to reflect layout-aware architecture
 
 ⸻
 
 6. Verification Criteria (Tests)
 
-- SCENARIO 1: Valid digital PDF is parsed into structured pages and blocks.
-- SCENARIO 2: Multi-page PDFs preserve correct page ordering and metadata.
-- SCENARIO 3: Tables and structured sections are not lost during parsing.
-- SCENARIO 4: No UTF-8 corruption occurs during extraction.
-- SCENARIO 5: Line-based splitting is fully removed from pipeline.
-- SCENARIO 6: Large PDFs (>50MB) are processed without memory crashes.
-- SCENARIO 7: Extraction output retains page-level provenance information.
+- SCENARIO 1: PDF is parsed into pages with correct text item coordinates.
+- SCENARIO 2: Multi-column layouts preserve spatial ordering.
+- SCENARIO 3: Tables are detected using layout grouping (not delimiters).
+- SCENARIO 4: No UTF-8 corruption or string-based flattening occurs.
+- SCENARIO 5: Line-based splitting is completely removed.
+- SCENARIO 6: Large PDFs (>50MB) are processed without memory crash.
+- SCENARIO 7: Page + coordinate metadata is preserved in output.
 - SCENARIO 8: Corrupted PDFs fail gracefully with structured errors.
-- SCENARIO 9: Service only returns structured text (no asset inference).
+- SCENARIO 9: Output contains ONLY structured document data (no asset inference).

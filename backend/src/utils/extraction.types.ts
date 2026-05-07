@@ -10,7 +10,7 @@ export enum PdfExtractionStrategy {
   Scanned = 'scanned',
 }
 
-export type ExtractedCellValue = string | number | boolean | null;
+export type ExtractedCellValue = string | number | boolean | null | unknown;
 
 export type ExtractedAssetRecord = Record<string, ExtractedCellValue>;
 
@@ -76,11 +76,28 @@ export interface TextBlockPosition {
 export interface TextBlock {
   readonly text: string;
   readonly type: TextBlockType;
-  readonly position?: TextBlockPosition;
+  readonly pageNumber: number;
+  readonly items: PdfTextItem[];
+  readonly boundingBox?: {
+    readonly xMin: number;
+    readonly xMax: number;
+    readonly yMin: number;
+    readonly yMax: number;
+  };
+}
+
+export interface PdfTextItem {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly fontSize?: number;
 }
 
 export interface PdfPage {
   readonly pageNumber: number;
+  readonly items: PdfTextItem[];
   readonly textBlocks: TextBlock[];
 }
 
