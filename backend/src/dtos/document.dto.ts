@@ -25,6 +25,7 @@ export class DocumentWithJobResponseDto {
   readonly jobId!: string;
   readonly documentId!: string;
   readonly originalFileName!: string;
+  readonly storageKey!: string;
   readonly mimeType!: string | null;
   readonly fileSize!: number | null;
   readonly status!: JobStatus;
@@ -36,6 +37,7 @@ export class DocumentWithJobResponseDto {
 export class DocumentResponseDto {
   readonly id!: string;
   readonly originalFileName!: string;
+  readonly storageKey!: string;
   readonly mimeType!: string | null;
   readonly fileSize!: number | null;
   readonly checksumSha256!: string | null;

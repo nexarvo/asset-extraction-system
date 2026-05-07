@@ -56,12 +56,12 @@ export class DocumentsController {
     return this.documentsService.remove(id);
   }
 
-  @Get(':documentId/review')
-  async review(
-    @Param('documentId') documentId: string,
-    @Query('page') page: number = 1,
-    @Query('pageSize') pageSize: number = 10,
-  ): Promise<ReviewResponseDto> {
-    return this.documentsService.review(documentId, page, pageSize);
-  }
+   @Get(':documentId/review')
+   async review(
+     @Param('documentId') documentId: string,
+     @Query('page') page: number = 1,
+     @Query('pageSize') pageSize: number = 10,
+   ): Promise<ReviewResponseDto | null> {
+     return this.documentsService.review(documentId, page, pageSize);
+   }
 }
