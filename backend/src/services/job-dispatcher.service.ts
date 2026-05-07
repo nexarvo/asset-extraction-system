@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { DataSource } from 'typeorm';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
@@ -12,8 +13,7 @@ import {
   QueuedJobResponse,
 } from '../utils/extraction.types';
 import { getFileExtension } from '../utils/file.utils';
-import { ExtractionJobRepository } from '../repositories/extraction-job.repository';
-import { ExtractionJobStatus } from '../entities/extraction-job.entity';
+import { ProcessingJobStatus } from '../entities/processing-job.entity';
 
 @Injectable()
 export class JobDispatcherService {
@@ -21,7 +21,7 @@ export class JobDispatcherService {
 
   constructor(
     private readonly logger: AppLoggerService,
-    private readonly jobRepository: ExtractionJobRepository,
+    private readonly dataSource: DataSource,
   ) {}
 
   private getQueue(): Queue<ExtractionJobData> {
@@ -45,14 +45,17 @@ export class JobDispatcherService {
         const extension = getFileExtension(file.filename);
         const fileType = extension as 'csv' | 'xlsx' | 'pdf';
 
-        const dbJob = await this.jobRepository.create({
-          fileName: file.filename,
-          fileType,
-          status: ExtractionJobStatus.WAITING,
-        });
+        const jobId = await this.dataSource.query(
+          `INSERT INTO processing_jobs (id, job_type, status, attempt_count, created_at)
+           VALUES (gen_random_uuid(), 'EXTRACTION', $1, 0, now())
+           RETURNING id`,
+          [ProcessingJobStatus.QUEUED],
+        );
+
+        const insertedJobId = jobId[0]?.id;
 
         await queue.add('extract', {
-          jobId: dbJob.id,
+          jobId: insertedJobId,
           filename: file.filename,
           buffer: file.buffer,
           fileType,
@@ -62,14 +65,14 @@ export class JobDispatcherService {
           'job dispatched',
           'JobDispatcherService',
           {
-            jobId: dbJob.id,
+            jobId: insertedJobId,
             filename: file.filename,
             fileType,
           },
         );
 
         jobs.push({
-          jobId: dbJob.id,
+          jobId: insertedJobId,
           filename: file.filename,
           status: 'waiting',
         });
@@ -94,7 +97,12 @@ export class JobDispatcherService {
 
   async getJobStatus(jobId: string): Promise<QueuedJobResponse | null> {
     try {
-      const job = await this.jobRepository.findById(jobId);
+      const result = await this.dataSource.query(
+        `SELECT id, document_id, status FROM processing_jobs WHERE id = $1`,
+        [jobId],
+      );
+
+      const job = result[0];
 
       if (!job) {
         return null;
@@ -102,7 +110,7 @@ export class JobDispatcherService {
 
       return {
         jobId: job.id,
-        filename: job.fileName,
+        filename: '',
         status: job.status,
       };
     } catch (error) {

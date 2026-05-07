@@ -15,11 +15,11 @@ export class ExtractionErrorRepository {
     return this.repository.save(entity);
   }
 
-  async findByJobId(jobId: string): Promise<ExtractionErrorEntity[]> {
-    return this.repository.find({ where: { jobId }, order: { createdAt: 'DESC' } });
+  async findByProcessingJobId(processingJobId: string): Promise<ExtractionErrorEntity[]> {
+    return this.repository.find({ where: { processingJobId }, order: { createdAt: 'DESC' } });
   }
 
-  async deleteByJobId(jobId: string): Promise<void> {
-    await this.repository.delete({ jobId });
+  async deleteByProcessingJobId(processingJobId: string): Promise<void> {
+    await this.repository.delete({ processingJobId });
   }
 }

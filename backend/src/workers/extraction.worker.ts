@@ -2,15 +2,13 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Worker, Job } from 'bullmq';
 import { AppLoggerService } from '../core/app-logger.service';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
-import { ExtractionJobRepository } from '../repositories/extraction-job.repository';
-import { ExtractionResultRepository } from '../repositories/extraction-result.repository';
-import { ExtractedRecordRepository } from '../repositories/extracted-record.repository';
 import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 import { EXTRACTION_QUEUE_NAME } from '../queues/extraction.queue';
 import { ExtractionJobData, ExtractionJobResult } from '../utils/extraction.types';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
-import { ExtractionJobStatus } from '../entities/extraction-job.entity';
+import { ProcessingJobStatus } from '../entities/processing-job.entity';
+import { DataSource } from 'typeorm';
 
 const WORKER_CONCURRENCY = 3;
 
@@ -21,10 +19,8 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly logger: AppLoggerService,
     private readonly strategyFactory: ExtractionStrategyFactory,
-    private readonly jobRepository: ExtractionJobRepository,
-    private readonly resultRepository: ExtractionResultRepository,
-    private readonly recordRepository: ExtractedRecordRepository,
     private readonly errorRepository: ExtractionErrorRepository,
+    private readonly dataSource: DataSource,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
       EXTRACTION_QUEUE_NAME,
@@ -36,7 +32,7 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
     this.worker.on('completed', async (job) => {
       if (job && job.data?.jobId) {
-        await this.jobRepository.markCompleted(job.data.jobId);
+        await this.markJobCompleted(job.data.jobId);
         this.logger.log(
           'job completed',
           'ExtractionWorker',
@@ -47,12 +43,14 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
     this.worker.on('failed', async (job, error) => {
       if (job && job.data?.jobId) {
-        await this.jobRepository.setError(job.data.jobId, error.message);
+        await this.setJobError(job.data.jobId, error.message);
         await this.errorRepository.create({
-          jobId: job.data.jobId,
+          processingJobId: job.data.jobId,
+          errorStage: 'EXTRACTION',
           errorCode: 'JOB_FAILED',
           message: error.message,
           stackTrace: error.stack,
+          recoverable: job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
         });
         this.logger.error(
           'job failed',
@@ -66,6 +64,24 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         );
       }
     });
+  }
+
+  private async markJobCompleted(jobId: string): Promise<void> {
+    await this.dataSource
+      .createQueryBuilder()
+      .update('processing_jobs')
+      .set({ status: ProcessingJobStatus.COMPLETED, completedAt: new Date() })
+      .where('id = :id', { id: jobId })
+      .execute();
+  }
+
+  private async setJobError(jobId: string, errorMessage: string): Promise<void> {
+    await this.dataSource
+      .createQueryBuilder()
+      .update('processing_jobs')
+      .set({ status: ProcessingJobStatus.FAILED, errorSummary: errorMessage, completedAt: new Date() })
+      .where('id = :id', { id: jobId })
+      .execute();
   }
 
   private async processJob(
@@ -84,7 +100,12 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       },
     );
 
-    await this.jobRepository.updateStatus(jobId, ExtractionJobStatus.ACTIVE);
+    await this.dataSource
+      .createQueryBuilder()
+      .update('processing_jobs')
+      .set({ status: ProcessingJobStatus.RUNNING, startedAt: new Date() })
+      .where('id = :id', { id: jobId })
+      .execute();
 
     try {
       const strategy = this.strategyFactory.getStrategy(fileType);
@@ -98,21 +119,36 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
       const result = await strategy.extract(buffer, filename);
 
-      const extractionResult = await this.resultRepository.create({
-        jobId,
-        sourceFile: filename,
-        extractionStrategy: result.strategy || fileType,
-        metadata: result.metadata as unknown as Record<string, unknown>,
-      });
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      try {
+        await queryRunner.startTransaction();
 
-      const records = result.records.map((record) => ({
-        extractionResultId: extractionResult.id,
-        rawText: typeof record === 'object' ? JSON.stringify(record) : String(record ?? ''),
-        structuredData: record as Record<string, unknown>,
-      }));
+        const extractionResult = await queryRunner.query(
+          `INSERT INTO "extracted_assets" (id, document_id, extraction_strategy, raw_asset_name, raw_payload, overall_confidence, review_status, created_at)
+           VALUES (gen_random_uuid(), (SELECT document_id FROM processing_jobs WHERE id = $1), $2, $3, $4, $5, 'pending', now())
+           RETURNING id`,
+          [jobId, result.strategy || fileType, filename, JSON.stringify(result.metadata), null],
+        );
 
-      if (records.length > 0) {
-        await this.recordRepository.createMany(records);
+        const assetId = extractionResult[0]?.id;
+
+        if (result.records && result.records.length > 0) {
+          for (const record of result.records) {
+            await queryRunner.query(
+              `INSERT INTO "extracted_asset_fields" (id, extracted_asset_id, field_name, raw_value, normalized_value, confidence_score, extraction_method, created_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'LLM_EXTRACTION', now())`,
+              [assetId, 'asset_data', typeof record === 'object' ? JSON.stringify(record) : String(record), JSON.stringify(record), null],
+            );
+          }
+        }
+
+        await queryRunner.commitTransaction();
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
       }
 
       return {
@@ -131,11 +167,12 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         );
 
       if (!isRetryable) {
-        await this.jobRepository.updateStatus(
-          jobId,
-          ExtractionJobStatus.FAILED,
-          { errorMessage: (error as Error).message },
-        );
+        await this.dataSource
+          .createQueryBuilder()
+          .update('processing_jobs')
+          .set({ status: ProcessingJobStatus.FAILED, errorSummary: (error as Error).message, completedAt: new Date() })
+          .where('id = :id', { id: jobId })
+          .execute();
         this.logger.log(
           'non-retryable error',
           'ExtractionWorker',

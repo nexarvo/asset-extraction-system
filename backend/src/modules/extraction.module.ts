@@ -18,22 +18,42 @@ import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
 import {
-  ExtractionJobEntity,
-  ExtractionResultEntity,
-  ExtractedRecordEntity,
+  DocumentEntity,
+  ProcessingJobEntity,
+  DocumentPageEntity,
+  ExtractedAssetEntity,
+  ExtractedAssetFieldEntity,
+  CanonicalAssetEntity,
+  CanonicalAssetFieldEntity,
+  FieldEvidenceEntity,
+  AssetRelationshipEntity,
+  DuplicateClusterEntity,
+  AssetMatchEntity,
+  ValidationFlagEntity,
+  ReviewQueueEntity,
+  AssetVersionEntity,
+  AssetChangeEventEntity,
   ExtractionErrorEntity,
 } from '../entities';
-import { ExtractionJobRepository } from '../repositories/extraction-job.repository';
-import { ExtractionResultRepository } from '../repositories/extraction-result.repository';
-import { ExtractedRecordRepository } from '../repositories/extracted-record.repository';
-import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      ExtractionJobEntity,
-      ExtractionResultEntity,
-      ExtractedRecordEntity,
+      DocumentEntity,
+      ProcessingJobEntity,
+      DocumentPageEntity,
+      ExtractedAssetEntity,
+      ExtractedAssetFieldEntity,
+      CanonicalAssetEntity,
+      CanonicalAssetFieldEntity,
+      FieldEvidenceEntity,
+      AssetRelationshipEntity,
+      DuplicateClusterEntity,
+      AssetMatchEntity,
+      ValidationFlagEntity,
+      ReviewQueueEntity,
+      AssetVersionEntity,
+      AssetChangeEventEntity,
       ExtractionErrorEntity,
     ]),
   ],
@@ -55,10 +75,6 @@ import { ExtractionErrorRepository } from '../repositories/extraction-error.repo
     CsvAssetMapperService,
     XlsxAssetMapperService,
     PaddleOcrService,
-    ExtractionJobRepository,
-    ExtractionResultRepository,
-    ExtractedRecordRepository,
-    ExtractionErrorRepository,
   ],
 })
 export class ExtractionModule {}
