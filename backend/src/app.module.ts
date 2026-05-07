@@ -12,6 +12,7 @@ import { PdfExtractionService } from './services/extractPDF';
 import { ScannedPdfExtractionService } from './services/extractScannedPDF';
 import { XlsxExtractionService } from './services/extractXLSX';
 import { PaddleOcrService } from './services/paddleOCR';
+import { XlsxAssetMapperService } from './services/xlsxAssetMapper.service';
 
 @Module({
   imports: [],
@@ -23,6 +24,7 @@ import { PaddleOcrService } from './services/paddleOCR';
     CsvAssetMapperService,
     CsvExtractionService,
     XlsxExtractionService,
+    XlsxAssetMapperService,
     PdfExtractionService,
     DigitalPdfExtractionService,
     ScannedPdfExtractionService,

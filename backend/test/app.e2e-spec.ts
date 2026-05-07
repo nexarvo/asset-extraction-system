@@ -60,7 +60,24 @@ describe('AppController (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.result.records).toEqual([{ sheetName: 'Assets', assetId: 'A-2', name: 'Monitor' }]);
+    expect(response.body.result.records).toEqual([{ sheetName: 'Assets', assetid: 'A-2', name: 'Monitor' }]);
+  });
+
+  it('/extractions/xlsx (POST) accepts valid spreadsheets with unreliable text/plain MIME', async () => {
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet([{ assetId: 'A-3', name: 'Keyboard' }]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Assets');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const response = await request(app.getHttpServer())
+      .post('/extractions/xlsx')
+      .attach('file', buffer, {
+        filename: 'frpp-data-summarized-by-installation-name-fy24.xlsx',
+        contentType: 'text/plain',
+      })
+      .expect(201);
+
+    expect(response.body.result.records).toEqual([{ sheetName: 'Assets', assetid: 'A-3', name: 'Keyboard' }]);
   });
 
   it('/extractions/pdf (POST) uploads and routes PDF files', async () => {

@@ -22,6 +22,16 @@ export interface RawCsvRow {
   readonly raw: Record<string, string>;
 }
 
+export type RawXlsxCellValue = string | number | boolean | Date | null;
+
+export interface RawXlsxRow {
+  readonly sheetName: string;
+  readonly rowIndex: number;
+  readonly headers: string[];
+  readonly values: RawXlsxCellValue[];
+  readonly extraValues: RawXlsxCellValue[];
+}
+
 export interface AssetFileInput {
   readonly filename: string;
   readonly buffer: Buffer;

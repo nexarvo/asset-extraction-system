@@ -33,6 +33,7 @@ export interface UploadedAssetFile {
 interface UploadedFileValidationOptions {
   readonly allowedFileTypes: readonly SupportedFileType[];
   readonly allowedMimeTypes: readonly string[];
+  readonly fallbackMimeTypes?: readonly string[];
 }
 
 export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFile | undefined, AssetFileInput> {
@@ -41,7 +42,6 @@ export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFi
   transform(value: UploadedAssetFile | undefined): AssetFileInput {
     this.assertFileExists(value);
     this.assertFileHasContent(value);
-    this.assertMimeTypeAllowed(value);
 
     const input: AssetFileInput = {
       filename: value.originalname,
@@ -50,6 +50,7 @@ export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFi
     };
 
     this.assertFileTypeAllowed(input);
+    this.assertMimeTypeAllowed(value);
     return input;
   }
 
@@ -66,7 +67,10 @@ export class UploadedFileValidationPipe implements PipeTransform<UploadedAssetFi
   }
 
   private assertMimeTypeAllowed(value: UploadedAssetFile): void {
-    if (!this.options.allowedMimeTypes.includes(value.mimetype)) {
+    const isAllowedMimeType = this.options.allowedMimeTypes.includes(value.mimetype);
+    const isFallbackMimeType = this.options.fallbackMimeTypes?.includes(value.mimetype) ?? false;
+
+    if (!isAllowedMimeType && !isFallbackMimeType) {
       throw new ApplicationError(ErrorCode.UnsupportedFileType, undefined, {
         filename: value.originalname,
         mimeType: value.mimetype,

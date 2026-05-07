@@ -44,6 +44,7 @@ const XLSX_UPLOAD_PIPE = new UploadedFileValidationPipe({
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/octet-stream',
   ],
+  fallbackMimeTypes: ['text/plain'],
 });
 
 const PDF_UPLOAD_PIPE = new UploadedFileValidationPipe({
