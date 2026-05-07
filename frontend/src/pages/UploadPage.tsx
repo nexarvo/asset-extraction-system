@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Table2 } from 'lucide-react';
 import { extractionApi } from '../apis/extraction.api';
-import { createSession, addJobsToSession, setActiveSession } from '../store/slices/jobs.slice';
+import { createSession, addJobsToSession, setActiveSession, type Job } from '../store/slices/jobs.slice';
 import { ROUTES } from '../constants/routes';
 
 const formatFileSize = (bytes: number): string => {
@@ -65,13 +65,25 @@ export const UploadPage = () => {
 
     try {
       const response = await extractionApi.extract(files);
+      const jobIds = response.jobs.map((job) => job.jobId);
 
-      const jobs = response.jobs.map((job) => ({
-        jobId: job.jobId,
-        filename: job.filename,
-        status: job.status as 'waiting' | 'processing' | 'completed' | 'failed',
-        progress: 0,
-      }));
+      const documentsResponse = await extractionApi.getDocumentsByJobIds(jobIds);
+      const documentMap = new Map(documentsResponse.map((doc) => [doc.jobId, doc]));
+
+      const jobs: Job[] = response.jobs.map((job) => {
+        const doc = documentMap.get(job.jobId);
+        return {
+          jobId: job.jobId,
+          documentId: doc?.documentId,
+          filename: doc?.originalFileName || job.filename,
+          storageKey: doc?.storageKey,
+          mimeType: doc?.mimeType,
+          fileSize: doc?.fileSize,
+          status: doc?.status as Job['status'] || job.status,
+          progress: doc?.progress || 0,
+          createdAt: doc?.createdAt,
+        };
+      });
 
       const sessionId = `session-${Date.now()}`;
       dispatch(createSession({ id: sessionId, name: 'Untitled' }));

@@ -19,6 +19,19 @@ export interface JobStatusResponse {
   error?: string;
 }
 
+export interface DocumentByJobResponse {
+  jobId: string;
+  documentId: string;
+  originalFileName: string;
+  storageKey: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  status: 'waiting' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  error?: string;
+  createdAt: string;
+}
+
 export const extractionApi = {
   async extract(files: File[]): Promise<ExtractResponse> {
     const formData = new FormData();
@@ -44,6 +57,20 @@ export const extractionApi = {
 
     if (!response.ok) {
       throw new Error(`Failed to get job status: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  async getDocumentsByJobIds(jobIds: string[]): Promise<DocumentByJobResponse[]> {
+    const response = await fetch(`${apiConfig.baseURL}/documents/by-jobs`, {
+      method: 'POST',
+      headers: apiConfig.headers,
+      body: JSON.stringify({ jobIds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get documents: ${response.status}`);
     }
 
     return response.json();

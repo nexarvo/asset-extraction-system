@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { DocumentsService } from '../services/documents.service';
-import type { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto } from '../dtos';
+import type { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto } from '../dtos';
 
 @Controller('documents')
 export class DocumentsController {
@@ -20,6 +20,13 @@ export class DocumentsController {
   @Post()
   async create(@Body() dto: CreateDocumentDto): Promise<DocumentResponseDto> {
     return this.documentsService.create(dto);
+  }
+
+  @Post('by-jobs')
+  async findByJobIds(
+    @Body() dto: ListDocumentsDto,
+  ): Promise<DocumentWithJobResponseDto[]> {
+    return this.documentsService.findByJobIds(dto);
   }
 
   @Get()

@@ -19,6 +19,11 @@ export class DocumentRepository {
     return this.repository.findOne({ where: { id } as FindOptionsWhere<DocumentEntity> });
   }
 
+  async findByIds(ids: string[]): Promise<DocumentEntity[]> {
+    if (ids.length === 0) return [];
+    return this.repository.findBy(ids.map((id) => ({ id } as FindOptionsWhere<DocumentEntity>)));
+  }
+
   async findByChecksum(checksum: string): Promise<DocumentEntity | null> {
     return this.repository.findOne({ where: { checksumSha256: checksum } as FindOptionsWhere<DocumentEntity> });
   }

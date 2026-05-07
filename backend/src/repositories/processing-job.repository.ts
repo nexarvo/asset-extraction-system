@@ -19,6 +19,11 @@ export class ProcessingJobRepository {
     return this.repository.findOne({ where: { id } as FindOptionsWhere<ProcessingJobEntity> });
   }
 
+  async findByIds(ids: string[]): Promise<ProcessingJobEntity[]> {
+    if (ids.length === 0) return [];
+    return this.repository.findBy(ids.map((id) => ({ id } as FindOptionsWhere<ProcessingJobEntity>)));
+  }
+
   async findByDocumentId(documentId: string): Promise<ProcessingJobEntity[]> {
     return this.repository.find({ where: { documentId } as FindOptionsWhere<ProcessingJobEntity>, order: { createdAt: 'DESC' } });
   }

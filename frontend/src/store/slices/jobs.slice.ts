@@ -2,10 +2,15 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 export interface Job {
   jobId: string;
+  documentId?: string;
   filename: string;
+  storageKey?: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
   status: 'waiting' | 'processing' | 'completed' | 'failed';
   progress: number;
   error?: string;
+  createdAt?: string;
 }
 
 export interface Session {

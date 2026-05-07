@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { AppLoggerService } from '../core/app-logger.service';
 import { DocumentRepository } from '../repositories/document.repository';
+import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { DocumentEntity, DocumentIngestionStatus } from '../entities/document.entity';
-import { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto } from '../dtos';
+import { ProcessingJobEntity, ProcessingJobStatus } from '../entities/processing-job.entity';
+import { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto } from '../dtos';
+import { JobStatus } from '../utils/extraction.types';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly documentRepository: DocumentRepository,
+    private readonly processingJobRepository: ProcessingJobRepository,
     private readonly logger: AppLoggerService,
   ) {}
 
@@ -33,6 +37,31 @@ export class DocumentsService {
       documents: entities.map((entity) => this.toResponseDto(entity)),
       total,
     };
+  }
+
+  async findByJobIds(dto: ListDocumentsDto): Promise<DocumentWithJobResponseDto[]> {
+    if (!dto.jobIds || dto.jobIds.length === 0) {
+      return [];
+    }
+
+    const jobs = await this.processingJobRepository.findByIds(dto.jobIds);
+    const documentIds = [...new Set(jobs.map((job) => job.documentId).filter((id): id is string => id !== null))];
+    const documents = await this.documentRepository.findByIds(documentIds);
+
+    const documentMap = new Map(documents.map((doc) => [doc.id, doc]));
+    const jobMap = new Map(jobs.map((job) => [job.id, job]));
+
+    return dto.jobIds
+      .map((jobId) => {
+        const job = jobMap.get(jobId);
+        if (!job || !job.documentId) return null;
+
+        const document = documentMap.get(job.documentId);
+        if (!document) return null;
+
+        return this.toDocumentWithJobResponseDto(document, job);
+      })
+      .filter((item): item is DocumentWithJobResponseDto => item !== null);
   }
 
   async findOne(id: string): Promise<DocumentResponseDto | null> {
@@ -71,6 +100,39 @@ export class DocumentsService {
     this.logger.log('Document deleted', 'DocumentsService', { documentId: id });
   }
 
+  private mapJobStatus(status: ProcessingJobStatus): JobStatus {
+    switch (status) {
+      case ProcessingJobStatus.QUEUED:
+        return 'waiting';
+      case ProcessingJobStatus.RUNNING:
+        return 'processing';
+      case ProcessingJobStatus.COMPLETED:
+        return 'completed';
+      case ProcessingJobStatus.FAILED:
+        return 'failed';
+      case ProcessingJobStatus.RETRYING:
+        return 'retrying';
+      default:
+        return status as JobStatus;
+    }
+  }
+
+  private calculateProgress(status: ProcessingJobStatus): number {
+    switch (status) {
+      case ProcessingJobStatus.QUEUED:
+        return 0;
+      case ProcessingJobStatus.RUNNING:
+        return 50;
+      case ProcessingJobStatus.COMPLETED:
+        return 100;
+      case ProcessingJobStatus.FAILED:
+      case ProcessingJobStatus.RETRYING:
+        return 0;
+      default:
+        return 0;
+    }
+  }
+
   private toResponseDto(entity: DocumentEntity): DocumentResponseDto {
     return {
       id: entity.id,
@@ -85,6 +147,21 @@ export class DocumentsService {
       createdAt: entity.createdAt,
     };
   }
+
+  private toDocumentWithJobResponseDto(document: DocumentEntity, job: ProcessingJobEntity): DocumentWithJobResponseDto {
+    return {
+      jobId: job.id,
+      documentId: document.id,
+      originalFileName: document.originalFileName,
+      storageKey: document.storageKey,
+      mimeType: document.mimeType,
+      fileSize: document.fileSize,
+      status: this.mapJobStatus(job.status),
+      progress: this.calculateProgress(job.status),
+      error: job.errorSummary ?? undefined,
+      createdAt: document.createdAt,
+    };
+  }
 }
 
-export { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto };
+export { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto };

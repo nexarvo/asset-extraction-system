@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { ChevronDown, ChevronRight, Plus, Eye, Trash2, Check, X, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Check, X, Pencil, Table2, Calendar, HardDrive, Activity } from 'lucide-react';
 import type { RootState } from '../store/rootReducer';
 import {
   updateJobStatus,
-  removeJob,
   setActiveSession,
   createSession,
   renameSession,
@@ -115,112 +114,147 @@ export const DocumentsPage = () => {
     };
   }, [dispatch]);
 
-  const handleDeleteJob = useCallback((sessionId: string, jobId: string) => {
-    dispatch(removeJob({ sessionId, jobId }));
-    if (selectedJobId === jobId) {
-      setSelectedJobId(null);
-    }
-  }, [dispatch, selectedJobId]);
-
-  const handleViewJob = useCallback((jobId: string) => {
-    setSelectedJobId(jobId);
-  }, []);
-
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F5F5' }}>
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#F5F5F5', overflow: 'hidden' }}>
       <div style={{
         width: '240px',
-        backgroundColor: '#FCFCFC',
-        borderRight: '1px solid #e5e7eb',
+        height: '100vh',
+        backgroundColor: '#F9F9F9',
+        borderRight: '0.5px solid #e5e7eb',
         padding: '16px 0',
+        overflow: 'auto',
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
-          marginBottom: '8px',
-        }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
-            Sessions
-          </span>
-          <button
-            onClick={handleCreateSession}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '24px',
-              height: '24px',
-              border: 'none',
-              borderRadius: '4px',
-              backgroundColor: '#f3f4f6',
-              color: '#6b7280',
-              cursor: 'pointer',
-            }}
-          >
-            <Plus size={14} />
-          </button>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 16px',
+            marginBottom: '8px',
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
+              Sessions
+            </span>
+            <button
+              onClick={handleCreateSession}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '24px',
+                height: '24px',
+                border: 'none',
+                borderRadius: '4px',
+                backgroundColor: '#f3f4f6',
+                color: '#6b7280',
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+
+          {sessions.map((session) => (
+            <SessionItem
+              key={session.id}
+              session={session}
+              isExpanded={expandedSessions.has(session.id)}
+              isActive={session.id === activeSessionId}
+              isEditing={editingSessionId === session.id}
+              editingName={editingSessionId === session.id ? editingName : ''}
+              onToggle={() => toggleSession(session.id)}
+              onSelect={() => dispatch(setActiveSession(session.id))}
+              onStartEdit={() => startEditing(session)}
+              onEditChange={setEditingName}
+              onSave={saveEditing}
+              onCancel={cancelEditing}
+            />
+          ))}
         </div>
 
-        {sessions.map((session) => (
-          <SessionItem
-            key={session.id}
-            session={session}
-            isExpanded={expandedSessions.has(session.id)}
-            isActive={session.id === activeSessionId}
-            isEditing={editingSessionId === session.id}
-            editingName={editingSessionId === session.id ? editingName : ''}
-            onToggle={() => toggleSession(session.id)}
-            onSelect={() => dispatch(setActiveSession(session.id))}
-            onStartEdit={() => startEditing(session)}
-            onEditChange={setEditingName}
-            onSave={saveEditing}
-            onCancel={cancelEditing}
-          />
-        ))}
-      </div>
-
-      <div style={{ flex: 1, padding: '24px' }}>
-        <h1 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', marginBottom: '24px' }}>
-          {activeSession?.name ?? 'Documents'}
-        </h1>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh' }}>
+          <div style={{
+          backgroundColor: '#F9F9F9',
+          padding: '10px 24px',
+          borderBottom: '0.5px solid #e5e7eb',
+        }}>
+          <h1 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0 }}>
+            {activeSession?.name ?? 'Documents'}
+          </h1>
+          <p style={{ fontSize: '12px', color: '#9ca3af', margin: '2px 0 0 0' }}>
+            {activeSession?.jobs.length || 0} {(activeSession?.jobs.length || 0) === 1 ? 'document' : 'documents'}
+          </p>
+        </div>
 
         {activeSession && activeSession.jobs.length > 0 ? (
-          <div style={{ backgroundColor: '#FCFCFC', borderRadius: '8px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ backgroundColor: '#FCFCFC', borderTop: '0.5px solid #e5e7eb', marginTop: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: '#FCFCFC', border: '0.5px solid #e5e7eb' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                  <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7280', width: '50px' }}>#</th>
-                  <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7280' }}>Filename</th>
-                  <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7280', width: '120px' }}>Status</th>
-                  <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7280', width: '200px' }}>Progress</th>
-                  <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#6b7280', width: '150px' }}>Action</th>
+                <tr style={{ backgroundColor: '#f9fafb', borderBottom: '0.5px solid #e5e7eb' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: '#6b7280', borderRight: '0.5px solid #e5e7eb' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Table2 size={14} color="#000" />
+                      Document
+                    </span>
+                  </th>
+                  <th style={{ textAlign: 'left', padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: '#6b7280', borderRight: '0.5px solid #e5e7eb', width: '100px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={14} color="#000" />
+                      Date
+                    </span>
+                  </th>
+                  <th style={{ textAlign: 'left', padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: '#6b7280', borderRight: '0.5px solid #e5e7eb', width: '80px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <HardDrive size={14} color="#000" />
+                      Size
+                    </span>
+                  </th>
+                  <th style={{ textAlign: 'left', padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: '#6b7280' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Activity size={14} color="#000" />
+                      Extraction Status
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {activeSession.jobs.map((job, index) => {
+                {activeSession.jobs.map((job) => {
                   const statusStyles = getStatusStyles(job.status);
                   const isSelected = selectedJobId === job.jobId;
+                  const formatFileSize = (bytes: number | null | undefined) => {
+                    if (!bytes) return '-';
+                    if (bytes < 1024) return `${bytes} B`;
+                    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+                  };
                   return (
                     <tr
                       key={job.jobId}
                       style={{
-                        borderBottom: '1px solid #e5e7eb',
-                        borderLeft: isSelected ? '3px solid #1B30D4' : '3px solid transparent',
+                        borderBottom: '0.5px solid #e5e7eb',
+                        backgroundColor: isSelected ? '#f0f4ff' : 'transparent',
                         cursor: 'pointer',
+                        position: 'relative',
                       }}
                       onClick={() => setSelectedJobId(job.jobId)}
+                      onMouseEnter={(e) => {
+                        const btn = e.currentTarget.querySelector('.review-btn') as HTMLElement;
+                        if (btn) btn.style.display = 'flex';
+                      }}
+                      onMouseLeave={(e) => {
+                        const btn = e.currentTarget.querySelector('.review-btn') as HTMLElement;
+                        if (btn) btn.style.display = 'none';
+                      }}
                     >
-                      <td style={{ padding: '12px 16px', color: '#9ca3af', fontSize: '14px' }}>{index + 1}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827' }}>{job.filename}</td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ padding: '6px 12px', fontSize: '12px', color: '#111827', borderRight: '0.5px solid #e5e7eb' }}>{job.filename}</td>
+                      <td style={{ padding: '6px 12px', fontSize: '12px', color: '#6b7280', borderRight: '0.5px solid #e5e7eb' }}>{job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</td>
+                      <td style={{ padding: '6px 12px', fontSize: '12px', color: '#6b7280', borderRight: '0.5px solid #e5e7eb' }}>{formatFileSize(job.fileSize ?? undefined)}</td>
+                      <td style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span
                           style={{
                             display: 'inline-block',
-                            padding: '4px 10px',
+                            padding: '2px 8px',
                             borderRadius: '9999px',
-                            fontSize: '12px',
+                            fontSize: '11px',
                             fontWeight: 500,
                             backgroundColor: statusStyles.bg,
                             color: statusStyles.color,
@@ -228,70 +262,26 @@ export const DocumentsPage = () => {
                         >
                           {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
                         </span>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ flex: 1, height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div
-                              style={{
-                                width: `${job.progress}%`,
-                                height: '100%',
-                                backgroundColor: '#1B30D4',
-                                borderRadius: '3px',
-                                transition: 'width 0.3s',
-                              }}
-                            />
-                          </div>
-                          <span style={{ fontSize: '12px', color: '#6b7280', minWidth: '35px' }}>{job.progress}%</span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewJob(job.jobId);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              fontWeight: 500,
-                              color: '#1B30D4',
-                              backgroundColor: 'transparent',
-                              border: '1px solid #c7d2fe',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Eye size={14} />
-                            View
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteJob(activeSession.id, job.jobId);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              fontWeight: 500,
-                              color: '#dc2626',
-                              backgroundColor: 'transparent',
-                              border: '1px solid #fca5a5',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Trash2 size={14} />
-                            Delete
-                          </button>
-                        </div>
+                        <button
+                          className="review-btn"
+                          style={{
+                            display: 'none',
+                            position: 'absolute',
+                            right: '12px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            padding: '4px 12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#4b5563',
+                            backgroundColor: '#F5F5F5',
+                            border: '0.5px solid #9ca3af',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          review
+                        </button>
                       </td>
                     </tr>
                   );
@@ -301,6 +291,7 @@ export const DocumentsPage = () => {
           </div>
         ) : (
           <div style={{
+            marginTop: 'auto',
             textAlign: 'center',
             padding: '60px 20px',
             color: '#9ca3af',
