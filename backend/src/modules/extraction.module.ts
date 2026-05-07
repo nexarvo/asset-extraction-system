@@ -18,6 +18,22 @@ import { ExtractionRepository } from '../repositories/extraction.repository';
 import { CsvAssetMapperService } from '../services/csvAssetMapper.service';
 import { XlsxAssetMapperService } from '../services/xlsxAssetMapper.service';
 import { PaddleOcrService } from '../services/paddleOCR';
+import { DocumentRepository } from '../repositories/document.repository';
+import { ProcessingJobRepository } from '../repositories/processing-job.repository';
+import { DocumentPageRepository } from '../repositories/document-page.repository';
+import { ExtractedAssetRepository } from '../repositories/extracted-asset.repository';
+import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
+import { CanonicalAssetRepository } from '../repositories/canonical-asset.repository';
+import { CanonicalAssetFieldRepository } from '../repositories/canonical-asset-field.repository';
+import { FieldEvidenceRepository } from '../repositories/field-evidence.repository';
+import { AssetRelationshipRepository } from '../repositories/asset-relationship.repository';
+import { DuplicateClusterRepository } from '../repositories/duplicate-cluster.repository';
+import { AssetMatchRepository } from '../repositories/asset-match.repository';
+import { ValidationFlagRepository } from '../repositories/validation-flag.repository';
+import { ReviewQueueRepository } from '../repositories/review-queue.repository';
+import { AssetVersionRepository } from '../repositories/asset-version.repository';
+import { AssetChangeEventRepository } from '../repositories/asset-change-event.repository';
+import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 import {
   DocumentEntity,
   ProcessingJobEntity,
@@ -77,6 +93,22 @@ import {
     CsvAssetMapperService,
     XlsxAssetMapperService,
     PaddleOcrService,
+    DocumentRepository,
+    ProcessingJobRepository,
+    DocumentPageRepository,
+    ExtractedAssetRepository,
+    ExtractedAssetFieldRepository,
+    CanonicalAssetRepository,
+    CanonicalAssetFieldRepository,
+    FieldEvidenceRepository,
+    AssetRelationshipRepository,
+    DuplicateClusterRepository,
+    AssetMatchRepository,
+    ValidationFlagRepository,
+    ReviewQueueRepository,
+    AssetVersionRepository,
+    AssetChangeEventRepository,
+    ExtractionErrorRepository,
   ],
 })
 export class ExtractionModule {}
