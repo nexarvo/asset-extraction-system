@@ -1,4 +1,4 @@
-LLM-Powered Extraction Enrichment & Confidence System - Spec
+LLM-Powered Extraction Enrichment & Confidence System - Spec (Updated)
 
 1. Goal & Context
 
@@ -17,6 +17,9 @@ Build an extensible LLM enrichment system integrated directly into the ingestion
 - validates outputs deterministically
 - integrates with confidence scoring and review workflows
 - follows existing backend architecture without unnecessary abstraction or overengineering
+- integrates directly into the existing CSV/XLSX processing implementation
+- persists all inferred/enriched data into existing database entities
+- supports hybrid deterministic + LLM enrichment architecture
 
 ⸻
 
@@ -41,6 +44,27 @@ In Scope
 - [REVIEW] Batch processing support for rows
 - [REVIEW] Integrate into existing CSV/XLSX ingestion pipeline
 
+⸻
+
+Newly Added Scope
+
+- [IN-PROGRESS] Integrate asset inference directly during CSV/XLSX file processing
+- [IN-PROGRESS] Infer asset type during initial extraction stage
+- [IN-PROGRESS] Persist inferred asset type into existing extracted fields records
+- [IN-PROGRESS] Persist inference explanations into existing extracted fields records
+- [IN-PROGRESS] Add in-memory ambiguous row collection mechanism
+- [IN-PROGRESS] Queue ambiguous rows for batched LLM enrichment
+- [IN-PROGRESS] Batch-process ambiguous rows through LLM inference pipeline
+- [IN-PROGRESS] Persist post-inference confidence and enrichment results
+- [IN-PROGRESS] Add row-level enrichment lifecycle tracking
+- [IN-PROGRESS] Ensure deterministic extraction runs BEFORE LLM enrichment
+- [IN-PROGRESS] Ensure enrichment pipeline reuses existing row-processing mechanism
+- [IN-PROGRESS] Ensure ALL extracted/inferred values are persisted
+- [IN-PROGRESS] Avoid introducing any new database tables
+- [IN-PROGRESS] Extend existing entities only if absolutely necessary
+
+⸻
+
 Out of Scope
 
 - PDF OCR implementation
@@ -64,6 +88,8 @@ Tech Stack
 - PostgreSQL
 - Existing extraction pipeline architecture
 
+⸻
+
 Architecture Constraints
 
 - Must follow current folder structure and service patterns
@@ -72,12 +98,20 @@ Architecture Constraints
 - Keep implementation lean and incremental
 - Reuse existing ingestion flow and services where possible
 - Do not duplicate parsing logic already implemented for CSV/XLSX
+- Do NOT create new database tables
+- Reuse existing persistence layer
+- Reuse existing row processing implementation
+- In-memory batching should be lightweight and request/job scoped
+
+⸻
 
 Security
 
 - API keys loaded from environment variables
 - No secrets hardcoded
 - LLM requests must not log sensitive payloads
+
+⸻
 
 Dependencies
 
@@ -86,6 +120,7 @@ Dependencies
 - Existing review queue system
 - Existing validation flags system
 - Existing CSV/XLSX parsers
+- Existing row processing implementation
 
 ⸻
 
@@ -199,7 +234,7 @@ core/config/llm.config.ts
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Before row enrichment:
 
@@ -217,10 +252,22 @@ Infer:
 "currency_column": "",
 "jurisdiction_column": "",
 "latitude_column": "",
-"longitude_column": ""
+"longitude_column": "",
+"asset_type_column": ""
 }
 
-Implementation Requirements
+⸻
+
+Newly Added Requirements
+
+- [IN-PROGRESS] Run schema inference immediately after CSV/XLSX parse
+- [IN-PROGRESS] Infer asset-related columns before row iteration starts
+- [IN-PROGRESS] Persist schema inference metadata if supported by existing entities
+- [IN-PROGRESS] Add confidence score for schema mappings
+- [IN-PROGRESS] Support deterministic asset type column identification
+- [IN-PROGRESS] Use LLM fallback only for unresolved mappings
+
+⸻
 
 Deterministic First Pass
 
@@ -237,6 +284,9 @@ asset asset_name
 usd value value
 lat latitude
 lng longitude
+type asset_type
+
+⸻
 
 LLM Fallback
 
@@ -246,25 +296,13 @@ Use LLM only if:
 - multiple candidate columns
 - no deterministic confidence
 
-Persistence
-
-Persist:
-
-- inferred schema
-- mapping confidence
-- inference explanation
-
-Integration
-
-Must integrate directly into existing CSV/XLSX parsing pipeline.
-
 ⸻
 
 4.6 Row Enrichment Pipeline
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Process rows in batches.
 
@@ -273,6 +311,23 @@ Recommended batch size:
 - 25–100 rows
 
 Do NOT send entire files in one request.
+
+⸻
+
+Newly Added Requirements
+
+- [IN-PROGRESS] Integrate enrichment directly into existing row processing mechanism
+- [IN-PROGRESS] Process rows deterministically first
+- [IN-PROGRESS] Immediately persist deterministic extraction results
+- [IN-PROGRESS] Detect ambiguous rows during processing
+- [IN-PROGRESS] Store ambiguous rows temporarily in memory
+- [IN-PROGRESS] Batch ambiguous rows for LLM enrichment
+- [IN-PROGRESS] Merge deterministic and inferred values before persistence
+- [IN-PROGRESS] Persist enrichment results back into existing extracted field entities
+- [IN-PROGRESS] Persist enrichment explanations
+- [IN-PROGRESS] Persist inference metadata
+- [IN-PROGRESS] Support partial enrichment without blocking ingestion
+- [IN-PROGRESS] Ensure failed enrichment does not fail entire ingestion pipeline
 
 ⸻
 
@@ -286,6 +341,7 @@ LLM Responsibilities
 - generate explanation
 - identify ambiguity
 - recommend review escalation
+- infer missing values from contextual row information
 
 ⸻
 
@@ -312,12 +368,17 @@ Must integrate directly after CSV/XLSX extraction.
 Pipeline:
 
 CSV/XLSX Parse
-→ Extract raw rows
 → Schema inference
-→ Row enrichment
+→ Deterministic row extraction
+→ Persist deterministic fields
+→ Detect ambiguous rows
+→ Queue ambiguous rows in memory
+→ Batch LLM enrichment
 → Deterministic validation
 → Confidence scoring
-→ Persistence
+→ Persist enrichment results
+→ Create validation flags
+→ Create review items if needed
 
 ⸻
 
@@ -325,9 +386,20 @@ CSV/XLSX Parse
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 ALL LLM outputs must be validated before persistence.
+
+⸻
+
+Newly Added Requirements
+
+- [IN-PROGRESS] Validate inferred asset types
+- [IN-PROGRESS] Validate inferred currencies against jurisdiction
+- [IN-PROGRESS] Validate inferred coordinates
+- [IN-PROGRESS] Validate confidence score ranges
+- [IN-PROGRESS] Reject malformed enrichment payloads
+- [IN-PROGRESS] Persist raw LLM response for debugging/audit if supported
 
 ⸻
 
@@ -367,28 +439,28 @@ Detect:
 
 ⸻
 
-Validation Failure Behavior
-
-On validation failure:
-
-- create validation flag
-- reduce confidence
-- optionally escalate review
-- preserve raw output for auditability
-
-LLM outputs must NEVER be trusted directly.
-
-⸻
-
 4.8 Confidence Scoring
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Do NOT rely on raw LLM confidence.
 
 Use deterministic heuristic scoring.
+
+⸻
+
+Newly Added Requirements
+
+- [IN-PROGRESS] Add confidence scoring during deterministic extraction
+- [IN-PROGRESS] Reduce confidence when LLM inference required
+- [IN-PROGRESS] Reduce confidence on ambiguous rows
+- [IN-PROGRESS] Increase confidence for exact schema matches
+- [IN-PROGRESS] Add field-level confidence persistence
+- [IN-PROGRESS] Add row-level confidence aggregation
+- [IN-PROGRESS] Persist confidence factors for explainability
+- [IN-PROGRESS] Add confidence scoring for inferred asset type
 
 ⸻
 
@@ -406,41 +478,11 @@ Review escalation triggered -0.3
 
 ⸻
 
-Compute
-
-Compute:
-
-- field confidence
-- overall confidence
-
-⸻
-
-Store
-
-Persist:
-
-- confidence score
-- confidence explanation
-- confidence factors/signals
-
-⸻
-
-Confidence Rules
-
-Example:
-
-if overall_confidence < 0.65:
-send_to_review_queue
-
-Confidence must be deterministic and reproducible.
-
-⸻
-
 4.9 Review Escalation
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 If:
 
@@ -454,22 +496,15 @@ Then:
 
 - create review queue entry
 
-Example:
-
-{
-"reason": "Currency could not be inferred confidently",
-"priority": 2
-}
-
 ⸻
 
-Requirements
+Newly Added Requirements
 
-Persist:
-
-- escalation reason
-- triggering rule
-- related entity id
+- [IN-PROGRESS] Escalate rows with unresolved asset types
+- [IN-PROGRESS] Escalate rows with conflicting inferred values
+- [IN-PROGRESS] Escalate rows with repeated validation failures
+- [IN-PROGRESS] Escalate rows with incomplete enrichment payloads
+- [IN-PROGRESS] Persist review escalation reason for every ambiguous row
 
 ⸻
 
@@ -477,7 +512,7 @@ Persist:
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Integrate directly into current ingestion flow.
 
@@ -485,13 +520,15 @@ Required pipeline:
 
 Upload
 → Parse CSV/XLSX
-→ Extract rows
 → Schema inference
 → Deterministic extraction
-→ LLM enrichment
+→ Persist extracted fields
+→ Detect ambiguous rows
+→ Queue ambiguous rows in memory
+→ Batch LLM enrichment
 → Deterministic validation
 → Confidence scoring
-→ Persist extracted fields
+→ Persist enrichment results
 → Create validation flags
 → Create review items if needed
 
@@ -503,6 +540,9 @@ Important Constraints
 - Reuse existing extraction services
 - Reuse existing repositories/entities
 - Preserve current CRUD functionality
+- Do NOT create new persistence flows
+- Reuse existing save/update operations
+- Ensure enrichment updates existing extracted records
 
 ⸻
 
@@ -510,7 +550,7 @@ Important Constraints
 
 Status
 
-- [PARTIAL]
+- [IN-PROGRESS]
 
 Reuse existing tables where possible:
 
@@ -518,17 +558,24 @@ Reuse existing tables where possible:
 - [DONE] validation_flags
 - [DONE] review_queue
 
-Potential additions:
+⸻
 
-- [TODO] inference_explanation
-- [TODO] confidence_explanation
-- [TODO] confidence_factors
-- [TODO] extraction_model
-- [TODO] extraction_strategy
+Newly Added Requirements
 
-Only add fields if currently missing.
+- [IN-PROGRESS] Store inferred asset type in existing entity
+- [IN-PROGRESS] Store inference explanation in existing entity
+- [IN-PROGRESS] Store confidence factors in existing entity
+- [IN-PROGRESS] Store enrichment strategy/model metadata
+- [IN-PROGRESS] Store deterministic vs inferred source markers
+- [IN-PROGRESS] Update existing records after enrichment completion
+- [IN-PROGRESS] Ensure row enrichment persistence is idempotent
 
-Avoid unnecessary migrations.
+⸻
+
+Important Constraint
+
+- [IN-PROGRESS] Do NOT create any new database tables
+- [IN-PROGRESS] Extend existing entities only if absolutely necessary
 
 ⸻
 
@@ -536,7 +583,7 @@ Avoid unnecessary migrations.
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Deterministic Responsibilities
 
@@ -548,6 +595,7 @@ Use rules/code for:
 - schema enforcement
 - confidence aggregation
 - validation rules
+- ambiguous row detection
 
 ⸻
 
@@ -560,6 +608,7 @@ Use LLM for:
 - ambiguous classification
 - asset type inference
 - explanation generation
+- contextual row understanding
 
 ⸻
 
@@ -573,7 +622,7 @@ LLM outputs must ALWAYS pass through deterministic validation before persistence
 
 Status
 
-- [TODO]
+- [IN-PROGRESS]
 
 Requirements:
 
@@ -584,6 +633,16 @@ Requirements:
 Recommended:
 
 - 25–100 rows per batch
+
+⸻
+
+Newly Added Requirements
+
+- [IN-PROGRESS] Maintain in-memory ambiguous row queue
+- [IN-PROGRESS] Flush queue when batch threshold reached
+- [IN-PROGRESS] Flush remaining rows after file processing completes
+- [IN-PROGRESS] Track failed batch retries
+- [IN-PROGRESS] Ensure enrichment batches are isolated per job/document
 
 ⸻
 
@@ -627,26 +686,51 @@ Remaining Work
 - [REVIEW] 21. Persist confidence metadata
 - [REVIEW] 22. Add structured logging
 - [REVIEW] 23. Add malformed JSON handling
-- [TODO] 24. Add retry handling for provider failures
-- [TODO] 25. Add tests
-- [TODO] 26. Update README documentation
+
+⸻
+
+Newly Added Tasks
+
+- [IN-PROGRESS] 24. Integrate asset type inference into CSV processing flow
+- [IN-PROGRESS] 25. Integrate asset type inference into XLSX processing flow
+- [IN-PROGRESS] 26. Add ambiguous row detection mechanism
+- [IN-PROGRESS] 27. Add in-memory ambiguous row batching
+- [IN-PROGRESS] 28. Add enrichment queue flushing logic
+- [IN-PROGRESS] 29. Persist deterministic extraction immediately
+- [IN-PROGRESS] 30. Update extracted rows after enrichment completion
+- [IN-PROGRESS] 31. Add deterministic vs inferred source tagging
+- [IN-PROGRESS] 32. Add confidence persistence to extracted entities
+- [IN-PROGRESS] 33. Add enrichment explanation persistence
+- [IN-PROGRESS] 34. Add idempotent enrichment updates
+- [IN-PROGRESS] 35. Add malformed enrichment payload validation
+- [IN-PROGRESS] 36. Add enrichment retry handling
+- [IN-PROGRESS] 37. Ensure all enrichment updates are persisted
+- [IN-PROGRESS] 38. Ensure existing CRUD APIs return enriched values
+- [IN-PROGRESS] 39. Ensure ingestion job status supports enrichment lifecycle
+- [TODO] 40. Add tests
+- [TODO] 41. Update README documentation
 
 ⸻
 
 6. Verification Criteria (Tests)
 
-- [TODO] SCENARIO 1: CSV with complete structured fields processes without LLM inference.
-- [TODO] SCENARIO 2: Missing currency inferred correctly from jurisdiction.
-- [TODO] SCENARIO 3: Invalid coordinates create validation flags.
-- [TODO] SCENARIO 4: Low-confidence rows enter review queue.
-- [TODO] SCENARIO 5: Batch processing handles 10K rows successfully.
-- [TODO] SCENARIO 6: Provider factory switches providers without code changes.
-- [TODO] SCENARIO 7: Ollama provider works locally without cloud APIs.
-- [TODO] SCENARIO 8: LLM malformed JSON does not crash ingestion pipeline.
-- [TODO] SCENARIO 9: Confidence scores computed deterministically.
-- [TODO] SCENARIO 10: Extraction explanation stored successfully.
-- [TODO] SCENARIO 11: Existing ingestion pipeline remains functional.
-- [TODO] SCENARIO 12: XLSX multi-sheet metadata preserved correctly.
-- [TODO] SCENARIO 13: Deterministic validation catches malformed coordinates.
-- [TODO] SCENARIO 14: Ambiguous schema mappings trigger LLM fallback.
-- [TODO] SCENARIO 15: Failed LLM batch does not terminate entire ingestion job.
+- [IN-PROGRESS] SCENARIO 1: CSV with complete structured fields processes without LLM inference.
+- [IN-PROGRESS] SCENARIO 2: Missing currency inferred correctly from jurisdiction.
+- [IN-PROGRESS] SCENARIO 3: Invalid coordinates create validation flags.
+- [IN-PROGRESS] SCENARIO 4: Low-confidence rows enter review queue.
+- [IN-PROGRESS] SCENARIO 5: Batch processing handles 10K rows successfully.
+- [IN-PROGRESS] SCENARIO 6: Provider factory switches providers without code changes.
+- [IN-PROGRESS] SCENARIO 7: Ollama provider works locally without cloud APIs.
+- [IN-PROGRESS] SCENARIO 8: LLM malformed JSON does not crash ingestion pipeline.
+- [IN-PROGRESS] SCENARIO 9: Confidence scores computed deterministically.
+- [IN-PROGRESS] SCENARIO 10: Extraction explanation stored successfully.
+- [IN-PROGRESS] SCENARIO 11: Existing ingestion pipeline remains functional.
+- [IN-PROGRESS] SCENARIO 12: XLSX multi-sheet metadata preserved correctly.
+- [IN-PROGRESS] SCENARIO 13: Deterministic validation catches malformed coordinates.
+- [IN-PROGRESS] SCENARIO 14: Ambiguous schema mappings trigger LLM fallback.
+- [IN-PROGRESS] SCENARIO 15: Failed LLM batch does not terminate entire ingestion job.
+- [IN-PROGRESS] SCENARIO 16: Asset type inference persists successfully.
+- [IN-PROGRESS] SCENARIO 17: Ambiguous rows are queued and enriched correctly.
+- [IN-PROGRESS] SCENARIO 18: Deterministic extraction persists before enrichment.
+- [IN-PROGRESS] SCENARIO 19: Enrichment updates existing extracted rows correctly.
+- [IN-PROGRESS] SCENARIO 20: No new database tables are introduced.

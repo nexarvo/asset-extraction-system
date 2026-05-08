@@ -18,12 +18,15 @@ import { XlsxExtractionService } from '../services/extractXLSX';
 import { SupportedFileType } from '../utils/extraction.types';
 import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
 import { LLMEnrichmentService } from '../services/llmService/llm.service';
+import { EnrichmentCoordinatorService } from '../services/llmService/enrichment-coordinator.service';
+import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
 
 const WORKER_CONCURRENCY = 3;
 
 @Injectable()
 export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   private readonly worker: Worker<ExtractionJobData, ExtractionJobResult>;
+  private currentJobEnrichmentCoordinator: EnrichmentCoordinatorService | null = null;
 
   constructor(
     private readonly logger: AppLoggerService,
@@ -34,6 +37,8 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
     private readonly xlsxExtractionService: XlsxExtractionService,
     private readonly llmEnrichmentService: LLMEnrichmentService,
+    private readonly enrichmentCoordinator: EnrichmentCoordinatorService,
+    private readonly schemaInferenceService: SchemaInferenceService,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
       EXTRACTION_QUEUE_NAME,
@@ -188,15 +193,22 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     const workbook = this.xlsxExtractionService.readWorkbook(bufferData);
     const batch: ExtractedAssetCandidate[] = [];
     const BATCH_SIZE = 500;
+    let currentSheetName: string | undefined;
 
     await this.xlsxExtractionService.processWorkbookWithBackpressure(
       workbook,
       filename,
-      async (candidate) => {
+      async (candidate: ExtractedAssetCandidate, sheetName?: string) => {
+        currentSheetName = sheetName;
         if (candidate.rawRowData || candidate.normalizedRowData) {
           batch.push(candidate);
           if (batch.length >= BATCH_SIZE) {
-            await this.processXlsxBatch(batch, documentId, jobId);
+            await this.processXlsxBatch(
+              batch,
+              documentId,
+              jobId,
+              currentSheetName,
+            );
             batch.length = 0;
           }
         }
@@ -204,16 +216,22 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     );
 
     if (batch.length > 0) {
-      await this.processXlsxBatch(batch, documentId, jobId);
+      await this.processXlsxBatch(batch, documentId, jobId, currentSheetName);
     }
+
+    await this.flushAmbiguousRows();
   }
 
   private async processXlsxBatch(
     batch: ExtractedAssetCandidate[],
     documentId: string,
     jobId: string,
+    sourceSheetName?: string,
   ): Promise<void> {
-    await this.performLLMEnrichment(batch, documentId, jobId);
+    const schema = await this.runSchemaInference(batch);
+
+    this.processAndQueueAmbiguousRows(batch, documentId, jobId, schema);
+
     await this.persistBatchAndLogErrors(batch, documentId, jobId);
   }
 
@@ -283,7 +301,14 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     );
 
     if (validCandidates.length > 0) {
-      await this.performLLMEnrichment(validCandidates, documentId, jobId);
+      const schema = await this.runSchemaInference(validCandidates);
+
+      this.processAndQueueAmbiguousRows(
+        validCandidates,
+        documentId,
+        jobId,
+        schema,
+      );
 
       const persistenceResult =
         await this.persistenceService.persistBatchWithTransaction(
@@ -306,6 +331,91 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
           'CSV_ROW_INVALID',
           error.reason,
           error.rowIndex,
+        );
+      }
+
+      await this.flushAmbiguousRows();
+    }
+  }
+
+  private async runSchemaInference(
+    candidates: ExtractedAssetCandidate[],
+  ): Promise<any> {
+    const columns = this.extractColumns(candidates);
+    const sampleRows = candidates
+      .slice(0, 10)
+      .map((c) => c.normalizedRowData || c.rawRowData || {});
+
+    try {
+      return await this.schemaInferenceService.inferSchema(
+        columns,
+        sampleRows as Record<string, unknown>[],
+        true,
+      );
+    } catch (error) {
+      this.logger.warn(
+        'Schema inference failed, using empty schema',
+        'ExtractionWorker',
+        { error: (error as Error).message },
+      );
+      return {};
+    }
+  }
+
+  private processAndQueueAmbiguousRows(
+    candidates: ExtractedAssetCandidate[],
+    documentId: string,
+    jobId: string,
+    schema: any,
+  ): void {
+    for (const candidate of candidates) {
+      if (this.enrichmentCoordinator.isAmbiguousRow(candidate, schema)) {
+        this.enrichmentCoordinator.queueAmbiguousRow(
+          candidate,
+          documentId,
+          jobId,
+          undefined,
+        );
+      } else {
+        candidate.overallConfidence = Math.min(
+          (candidate.overallConfidence || 0.8) + 0.2,
+          1.0,
+        );
+      }
+    }
+
+    this.logger.log(
+      'Processed rows for ambiguous detection',
+      'ExtractionWorker',
+      {
+        totalRows: candidates.length,
+        queuedForEnrichment: this.enrichmentCoordinator.getQueuedCount(),
+      },
+    );
+  }
+
+  private async flushAmbiguousRows(): Promise<void> {
+    if (this.enrichmentCoordinator.hasQueuedRows()) {
+      this.logger.log(
+        'Flushing ambiguous rows for LLM enrichment',
+        'ExtractionWorker',
+        { count: this.enrichmentCoordinator.getQueuedCount() },
+      );
+
+      try {
+        const result =
+          await this.enrichmentCoordinator.flushAndEnrich();
+        this.logger.log(
+          'Ambiguous row enrichment completed',
+          'ExtractionWorker',
+          result as any,
+        );
+      } catch (error) {
+        this.logger.error(
+          'Failed to enrich ambiguous rows',
+          (error as Error).stack,
+          'ExtractionWorker',
+          { error: (error as Error).message },
         );
       }
     }

@@ -33,6 +33,7 @@ export interface InferredSchema {
   jurisdictionColumn?: string;
   latitudeColumn?: string;
   longitudeColumn?: string;
+  assetTypeColumn?: string;
 }
 
 export interface BatchEnrichmentInput {

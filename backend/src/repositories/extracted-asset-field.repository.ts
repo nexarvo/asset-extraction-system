@@ -153,6 +153,13 @@ export class ExtractedAssetFieldRepository {
     await this.repository.update(id, { validationStatus: status });
   }
 
+  async update(
+    id: string,
+    data: Partial<ExtractedAssetFieldEntity>,
+  ): Promise<void> {
+    await this.repository.update(id, data);
+  }
+
   async delete(id: string): Promise<void> {
     await this.repository.delete(id);
   }

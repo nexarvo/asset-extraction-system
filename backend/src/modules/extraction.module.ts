@@ -66,6 +66,7 @@ import { ValidationService } from '../services/llmService/validation.service';
 import { ConfidenceService } from '../services/llmService/confidence.service';
 import { ReviewEscalationService } from '../services/llmService/review-escalation.service';
 import { LLMEnrichmentService } from '../services/llmService/llm.service';
+import { EnrichmentCoordinatorService } from '../services/llmService/enrichment-coordinator.service';
 
 @Module({
   imports: [
@@ -135,6 +136,7 @@ import { LLMEnrichmentService } from '../services/llmService/llm.service';
     ConfidenceService,
     ReviewEscalationService,
     LLMEnrichmentService,
+    EnrichmentCoordinatorService,
   ],
 })
 export class ExtractionModule {}

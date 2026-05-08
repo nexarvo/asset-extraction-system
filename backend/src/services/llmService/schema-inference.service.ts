@@ -46,6 +46,15 @@ const CANONICAL_FIELD_MAPPINGS: Record<string, string[]> = {
   ],
   latitudeColumn: ['lat', 'latitude', 'lat_deg', 'y'],
   longitudeColumn: ['lng', 'longitude', 'lon', 'long', 'lng_deg', 'x'],
+  assetTypeColumn: [
+    'type',
+    'asset_type',
+    'category',
+    'property_type',
+    'classification',
+    'kind',
+    'subtype',
+  ],
 };
 
 @Injectable()
@@ -112,6 +121,7 @@ export class SchemaInferenceService {
       jurisdictionColumn: undefined,
       latitudeColumn: undefined,
       longitudeColumn: undefined,
+      assetTypeColumn: undefined,
     };
 
     const normalizedColumns = columns.map((c) => ({
