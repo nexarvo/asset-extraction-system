@@ -20,11 +20,7 @@ export class XlsxExtractionService {
 
   async extractDataFromXlsx(input: AssetFileInput): Promise<ExtractionResult> {
     try {
-      this.logger.info(
-        'starting spreadsheet extraction',
-        'XlsxExtractionService',
-        { filename: input.filename },
-      );
+      this.logger.info('starting spreadsheet extraction', { filename: input.filename });
       const workbook = this.readWorkbook(input.buffer);
       const result = await this.processWorkbook(workbook, input.filename);
       const fileType = getSupportedFileType(input);
@@ -130,15 +126,11 @@ export class XlsxExtractionService {
         warnings.push(...sheetResult.warnings);
       }
 
-      this.logger.info(
-        'spreadsheet extraction completed',
-        'XlsxExtractionService',
-        {
+      this.logger.info('spreadsheet extraction completed', {
           filename,
           recordCount: candidates.length,
           skippedRows: warnings.length,
-        },
-      );
+        });
 
       return { candidates, warnings };
     } catch (error) {
@@ -158,18 +150,14 @@ export class XlsxExtractionService {
     const warnings: string[] = [];
 
     if (!worksheet?.['!ref']) {
-      this.logger.warn(
-        'empty spreadsheet sheet skipped',
-        'XlsxExtractionService',
-        { filename, sheetName },
-      );
+      this.logger.warn('empty spreadsheet sheet skipped', { filename, sheetName });
       return { candidates, warnings };
     }
 
     const range = XLSX.utils.decode_range(worksheet['!ref']);
     const totalRows = range.e.r - range.s.r + 1;
 
-    this.logger.info('sheet processing started', 'XlsxExtractionService', {
+    this.logger.info('sheet processing started', {
       filename,
       sheetName,
       totalRows,
@@ -180,11 +168,7 @@ export class XlsxExtractionService {
     const headerRowNumber = this.detectHeaderRowNumber(worksheet, range);
 
     if (headerRowNumber === null) {
-      this.logger.warn(
-        'spreadsheet sheet missing headers',
-        'XlsxExtractionService',
-        { filename, sheetName },
-      );
+      this.logger.warn('spreadsheet sheet missing headers', { filename, sheetName });
       return { candidates, warnings };
     }
 
@@ -198,7 +182,7 @@ export class XlsxExtractionService {
     const headers = normalizeXlsxHeaders(headerCells.slice(0, headerLength));
     this.rowValidator.setHeaderCount(headers.length);
 
-    this.logger.info('spreadsheet headers parsed', 'XlsxExtractionService', {
+    this.logger.info('spreadsheet headers parsed', {
       filename,
       sheetName,
       headerRowIndex: headerRowNumber + 1,
@@ -236,11 +220,7 @@ export class XlsxExtractionService {
         if (isEmptyRow) {
           consecutiveEmptyRows++;
           if (consecutiveEmptyRows >= MAX_CONSECUTIVE_EMPTY_ROWS) {
-            this.logger.info(
-              'stopping due to consecutive empty rows',
-              'XlsxExtractionService',
-              { filename, sheetName, consecutiveEmptyRows, processedRows },
-            );
+            this.logger.info('stopping due to consecutive empty rows', { filename, sheetName, consecutiveEmptyRows, processedRows });
             break;
           }
           continue;
@@ -249,15 +229,11 @@ export class XlsxExtractionService {
         }
 
         if (this.isTrailingNoteRow(rawRow)) {
-          this.logger.info(
-            'spreadsheet note row skipped',
-            'XlsxExtractionService',
-            {
+          this.logger.info('spreadsheet note row skipped', {
               filename,
               sheetName,
               rowIndex: rowNumber + 1,
-            },
-          );
+            });
           continue;
         }
 
@@ -267,10 +243,7 @@ export class XlsxExtractionService {
           validationResult.errors.forEach((error) => {
             const warning = `sheet ${rawRow.sheetName}, row ${error.rowIndex}: ${error.reason}`;
             warnings.push(warning);
-            this.logger.warn(
-              'invalid spreadsheet row skipped',
-              'XlsxExtractionService',
-              {
+            this.logger.warn('invalid spreadsheet row skipped', {
                 filename,
                 ...error,
               },
@@ -285,20 +258,16 @@ export class XlsxExtractionService {
       } catch (error) {
         const warning = `sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`;
         warnings.push(warning);
-        this.logger.warn(
-          'spreadsheet row processing failed',
-          'XlsxExtractionService',
-          {
+        this.logger.warn('spreadsheet row processing failed', {
             filename,
             sheetName,
             rowIndex: rowNumber + 1,
             cause: error instanceof Error ? error.message : String(error),
-          },
-        );
+          });
       }
     }
 
-    this.logger.info('sheet processing completed', 'XlsxExtractionService', {
+    this.logger.info('sheet processing completed', {
       filename,
       sheetName,
       processedRows,
@@ -329,10 +298,7 @@ export class XlsxExtractionService {
         warnings.push(...result.warnings);
       }
 
-      this.logger.info(
-        'spreadsheet extraction with backpressure completed',
-        'XlsxExtractionService',
-        {
+      this.logger.info('spreadsheet extraction with backpressure completed', {
           filename,
           totalProcessed,
         },

@@ -36,46 +36,45 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
   ERROR: COLORS.red,
 };
 
-function formatArg(arg: unknown): string {
-  if (typeof arg === 'string') return arg;
-  if (arg === null || arg === undefined) return '';
-  if (typeof arg === 'object') {
-    const entries = Object.entries(arg as Record<string, unknown>);
-    if (entries.length === 0) return '';
-    return entries
-      .map(([key, value]) => `${key}=${String(value)}`)
-      .join(' ');
-  }
-  return String(arg);
+function formatMetadata(meta?: Record<string, unknown>): string {
+  if (!meta) return '';
+  
+  const entries = Object.entries(meta).filter(([_, v]) => v !== undefined && v !== null);
+  if (entries.length === 0) return '';
+  
+  return entries
+    .map(([key, value]) => {
+      if (typeof value === 'object') {
+        return `${key}=${JSON.stringify(value)}`;
+      }
+      return `${key}=${String(value)}`;
+    })
+    .join(' ');
 }
 
 export class ConsoleLogger {
-  private context: string;
+  constructor(private context: string = 'App') {}
 
-  constructor(context: string = 'App') {
-    this.context = context;
+  info(message: string, meta?: Record<string, unknown>): void {
+    this.log('INFO', message, meta);
   }
 
-  info(message: string, ...args: unknown[]): void {
-    this.log('INFO', message, args);
+  warn(message: string, meta?: Record<string, unknown>): void {
+    this.log('WARN', message, meta);
   }
 
-  warn(message: string, ...args: unknown[]): void {
-    this.log('WARN', message, args);
+  error(message: string, meta?: Record<string, unknown>): void {
+    this.log('ERROR', message, meta);
   }
 
-  error(message: string, ...args: unknown[]): void {
-    this.log('ERROR', message, args);
-  }
-
-  private log(level: LogLevel, message: string, args: unknown[] = []): void {
+  private log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
     const timestamp = new Date().toISOString();
     const color = LEVEL_COLORS[level];
-
-    const extra = args.map(formatArg).filter(Boolean).join(' ');
+    const metaStr = formatMetadata(meta);
+    const extra = metaStr ? ` ${metaStr}` : '';
 
     console.log(
-      `${COLORS.gray}[${timestamp}]${COLORS.reset} ${color}[${level}]${COLORS.reset} ${COLORS.bright}${this.context}${COLORS.reset} ${message}${extra ? ' ' + extra : ''}`
+      `${COLORS.gray}[${timestamp}]${COLORS.reset} ${color}[${level}]${COLORS.reset} ${COLORS.bright}${this.context}${COLORS.reset} ${message}${extra}`
     );
   }
 }
