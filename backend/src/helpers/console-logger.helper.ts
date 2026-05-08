@@ -1,6 +1,10 @@
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
-const COLORS = {
+const enableColors = process.env.FORCE_COLOR === '1' || 
+                     process.env.FORCE_COLOR === 'true' ||
+                     !process.env.NO_COLOR;
+
+const COLORS = enableColors ? {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
   dim: '\x1b[2m',
@@ -12,6 +16,18 @@ const COLORS = {
   cyan: '\x1b[36m',
   white: '\x1b[37m',
   gray: '\x1b[90m',
+} : {
+  reset: '',
+  bright: '',
+  dim: '',
+  red: '',
+  green: '',
+  yellow: '',
+  blue: '',
+  magenta: '',
+  cyan: '',
+  white: '',
+  gray: '',
 };
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
@@ -19,6 +35,19 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
   WARN: COLORS.yellow,
   ERROR: COLORS.red,
 };
+
+function formatArg(arg: unknown): string {
+  if (typeof arg === 'string') return arg;
+  if (arg === null || arg === undefined) return '';
+  if (typeof arg === 'object') {
+    const entries = Object.entries(arg as Record<string, unknown>);
+    if (entries.length === 0) return '';
+    return entries
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join(' ');
+  }
+  return String(arg);
+}
 
 export class ConsoleLogger {
   private context: string;
@@ -43,17 +72,10 @@ export class ConsoleLogger {
     const timestamp = new Date().toISOString();
     const color = LEVEL_COLORS[level];
 
-    let extra = '';
-    for (const arg of args) {
-      if (typeof arg === 'string') {
-        extra += ` ${arg}`;
-      } else if (arg && typeof arg === 'object') {
-        extra += ` ${JSON.stringify(arg)}`;
-      }
-    }
+    const extra = args.map(formatArg).filter(Boolean).join(' ');
 
     console.log(
-      `${COLORS.gray}[${timestamp}]${COLORS.reset} ${color}[${level}]${COLORS.reset} ${COLORS.bright}${this.context}${COLORS.reset} ${message}${extra}`
+      `${COLORS.gray}[${timestamp}]${COLORS.reset} ${color}[${level}]${COLORS.reset} ${COLORS.bright}${this.context}${COLORS.reset} ${message}${extra ? ' ' + extra : ''}`
     );
   }
 }

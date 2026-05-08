@@ -13,10 +13,8 @@ import {
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import { ProcessingJobStatus } from '../entities/processing-job.entity';
-import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
 import { LLMEnrichmentService } from '../services/llmService/llm.service';
 import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
-import { ExtractionOrchestrator } from '../helpers/extraction-orchestrator.helper';
 
 const WORKER_CONCURRENCY = 3;
 
@@ -159,109 +157,24 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       strategy: strategy.constructor.name,
     });
 
-    const result = await strategy.extract(bufferData, filename);
+    const context: import('../strategies/extraction-strategy.interface').ExtractionContext = {
+      documentId,
+      extractionJobId: jobId,
+      persistenceService: this.persistenceService,
+      llmEnrichmentService: this.llmEnrichmentService,
+      schemaInferenceService: this.schemaInferenceService,
+    };
 
+    const result = await strategy.extract(bufferData, filename, context);
+
+    const stats = result.processingStats;
     this.logger.log('extraction completed', 'ExtractionWorker', {
       jobId,
-      recordCount: result.records?.length || 0,
-      metadata: result.metadata,
+      fileType,
+      totalRows: stats?.totalRows || 0,
+      deterministicRows: stats?.deterministicRows || 0,
+      ambiguousRows: stats?.ambiguousRows || 0,
     });
-
-    const candidates = this.mapToAssetCandidates(result.records, documentId);
-    const validCandidates = candidates.filter(
-      (c) =>
-        (c.rawRowData && Object.keys(c.rawRowData).length > 0) ||
-        (c.normalizedRowData && Object.keys(c.normalizedRowData).length > 0),
-    );
-
-    if (validCandidates.length > 0) {
-      const orchestrator = new ExtractionOrchestrator(
-        documentId,
-        jobId,
-        this.persistenceService,
-        this.llmEnrichmentService,
-        this.schemaInferenceService,
-      );
-
-      await orchestrator.processFile(validCandidates);
-
-      this.logger.log('CSV extraction completed via orchestrator', 'ExtractionWorker', {
-        jobId,
-        totalCandidates: validCandidates.length,
-      });
-    }
-  }
-
-  private mapToAssetCandidates(
-    records: Record<string, unknown>[],
-    documentId: string,
-    sourceSheetName?: string,
-  ): import('../utils/csv-stream.types').ExtractedAssetCandidate[] {
-    return records
-      .map((record, index) => {
-        if (record && (record as any).rawRowData) {
-          return record as unknown as import('../utils/csv-stream.types').ExtractedAssetCandidate;
-        }
-
-        const metaFields = [
-          'sheetName',
-          'sourceSheetName',
-          'sourceRowIndex',
-          'overallConfidence',
-          'rawAssetName',
-        ];
-        const rawRowData: Record<string, string | number | null> = {};
-        const normalizedRowData: Record<string, unknown> = {};
-
-        for (const [key, value] of Object.entries(record)) {
-          if (!metaFields.includes(key) && key && key.trim() !== '') {
-            rawRowData[key] =
-              value !== undefined
-                ? typeof value === 'object'
-                  ? JSON.stringify(value)
-                  : String(value)
-                : null;
-            normalizedRowData[key] = value;
-          }
-        }
-
-        return {
-          rawAssetName: String(
-            record['asset_name'] ||
-              record['name'] ||
-              record['Asset Name'] ||
-              record['asset'] ||
-              `asset_${index + 1}`,
-          ),
-          fields: [],
-          sourceRowIndex: index + 1,
-          sourceSheetName:
-            sourceSheetName || (record['sheetName'] as string) || undefined,
-          overallConfidence: 0.8,
-          rawRowData:
-            Object.keys(rawRowData).length > 0 ? rawRowData : undefined,
-          normalizedRowData:
-            Object.keys(normalizedRowData).length > 0
-              ? normalizedRowData
-              : undefined,
-        };
-      })
-      .filter(
-        (c) =>
-          (c as any).rawRowData !== undefined ||
-          (c as any).normalizedRowData !== undefined,
-      );
-  }
-
-  private extractColumns(candidates: ExtractedAssetCandidate[]): string[] {
-    const columnsSet = new Set<string>();
-    for (const candidate of candidates) {
-      const rowData = candidate.normalizedRowData || candidate.rawRowData;
-      if (rowData) {
-        Object.keys(rowData).forEach((col) => columnsSet.add(col));
-      }
-    }
-    return Array.from(columnsSet);
   }
 
   private getWorkerOptions() {

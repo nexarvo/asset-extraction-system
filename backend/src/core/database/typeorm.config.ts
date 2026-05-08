@@ -9,7 +9,7 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
   password: databaseConfig.password,
   database: databaseConfig.database,
   synchronize: false,
-  logging: process.env.NODE_ENV !== 'production',
+  logging: process.env.LOG_SQL === 'true' ? ['error', 'warn', 'query'] : false,
   entities: [__dirname + '/../../entities/*.entity{.ts,.js}'],
   migrationsTableName: 'migrations',
   migrations: [__dirname + '/../../migrations/*{.ts,.js}'],

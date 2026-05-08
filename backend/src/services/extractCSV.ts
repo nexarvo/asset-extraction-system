@@ -3,10 +3,17 @@ import csvParser from 'csv-parser';
 import { Readable } from 'stream';
 import { AssetFileInput, ExtractionResult, SupportedFileType } from '../utils/extraction.types';
 import { createExtractionMetadata } from '../utils/file.utils';
-import type { ExtractedAssetCandidate, RawCsvRow } from '../utils/csv-stream.types';
+import type { RawCsvRow } from '../utils/csv-stream.types';
 import { RowValidationHelper } from '../helpers/row-validation.helper';
 import { AssetMappingHelper } from '../helpers/asset-mapping.helper';
 import { createLogger } from '../helpers/console-logger.helper';
+import { ExtractionProcessor } from '../helpers/extraction-processor.helper';
+import { ExtractionContext } from '../strategies/extraction-strategy.interface';
+
+export type RowProcessor = (
+  row: Record<string, unknown>,
+  rowIndex: number,
+) => Promise<void>;
 
 @Injectable()
 export class CsvExtractionService {
@@ -18,13 +25,62 @@ export class CsvExtractionService {
     try {
       this.logger.info('Starting CSV extraction', { filename: input.filename });
 
-      const { candidates, warnings } = await this.processCsvStream(input);
+      const { warnings } = await this.processCsvStream(input, null);
 
       return {
         sourceFile: input.filename,
         fileType: SupportedFileType.Csv,
-        records: candidates as unknown as Record<string, unknown>[],
-        metadata: createExtractionMetadata(candidates.length, warnings),
+        metadata: createExtractionMetadata(0, warnings),
+      };
+    } catch (error) {
+      throw new Error(`CSV extraction failed: ${(error as Error).message}`);
+    }
+  }
+
+  async extractWithProcessor(
+    input: AssetFileInput,
+    context: ExtractionContext,
+  ): Promise<ExtractionResult> {
+    try {
+      this.logger.info('Starting CSV extraction with processor', { filename: input.filename });
+
+      const warnings: string[] = [];
+      const processor = new ExtractionProcessor(context);
+
+      const sampleRows: { row: Record<string, unknown>; sourceRowIndex: number }[] = [];
+      let rowIndex = 0;
+
+      await this.processCsvStream(input, async (row, index) => {
+        rowIndex = index;
+        const candidate = this.assetMapper.mapRow(row as Record<string, string | null>, index);
+        const rowData = candidate.normalizedRowData || candidate.rawRowData || {};
+
+        if (sampleRows.length < 20) {
+          sampleRows.push({ row: rowData, sourceRowIndex: index });
+        }
+
+        await processor.processRow(rowData, index);
+      });
+
+      const schema = await processor.inferInitialSchema(sampleRows);
+      processor.setSchema(schema);
+
+      await processor.flush();
+
+      const stats = processor.getStats();
+
+      return {
+        sourceFile: input.filename,
+        fileType: SupportedFileType.Csv,
+        metadata: createExtractionMetadata(stats.total, warnings),
+        processingStats: {
+          totalRows: stats.total,
+          deterministicRows: stats.deterministic,
+          ambiguousRows: stats.ambiguous,
+          persistedCount: stats.deterministic,
+          enrichedCount: stats.ambiguous,
+          errors: [],
+        },
       };
     } catch (error) {
       throw new Error(`CSV extraction failed: ${(error as Error).message}`);
@@ -33,9 +89,9 @@ export class CsvExtractionService {
 
   private async processCsvStream(
     input: AssetFileInput,
-  ): Promise<{ candidates: ExtractedAssetCandidate[]; warnings: string[] }> {
+    processor: RowProcessor | null,
+  ): Promise<{ warnings: string[] }> {
     const warnings: string[] = [];
-    const results: ExtractedAssetCandidate[] = [];
 
     return new Promise((resolve, reject) => {
       const buffer = Buffer.from(input.buffer);
@@ -50,7 +106,7 @@ export class CsvExtractionService {
           headers = cols;
           this.rowValidator.setHeaderCount(cols.length);
         })
-        .on('data', (row: Record<string, string>) => {
+        .on('data', async (row: Record<string, string>) => {
           rowIndex++;
           const rawValues = headers.map((h) => row[h]);
 
@@ -63,12 +119,14 @@ export class CsvExtractionService {
           }
 
           const parsed = this.rowValidator.parseRow(rawRow);
-          const candidate = this.assetMapper.mapRow(parsed.data, rowIndex);
-          results.push(candidate);
+
+          if (processor) {
+            await processor(parsed.data, rowIndex);
+          }
         })
         .on('end', () => {
-          this.logger.info('CSV extraction completed', { rowsProcessed: rowIndex, candidatesFound: results.length });
-          resolve({ candidates: results, warnings });
+          this.logger.info('CSV extraction completed', { rowsProcessed: rowIndex });
+          resolve({ warnings });
         })
         .on('error', (error: Error) => {
           this.logger.error('CSV stream error', { error: error.message });

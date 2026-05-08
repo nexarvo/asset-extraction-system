@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { XlsxExtractionService } from '../services/extractXLSX';
 import { AssetFileInput, ExtractionResult } from '../utils/extraction.types';
-import { IExtractionStrategy } from './extraction-strategy.interface';
+import { IExtractionStrategy, ExtractionContext } from './extraction-strategy.interface';
 
 @Injectable()
 export class XlsxExtractionStrategy implements IExtractionStrategy {
@@ -11,7 +11,11 @@ export class XlsxExtractionStrategy implements IExtractionStrategy {
     return fileType === 'xlsx' || fileType === 'xls';
   }
 
-  async extract(buffer: Buffer, filename: string): Promise<ExtractionResult> {
+  async extract(
+    buffer: Buffer,
+    filename: string,
+    context: ExtractionContext,
+  ): Promise<ExtractionResult> {
     const isXls = filename.toLowerCase().endsWith('.xls');
     const input: AssetFileInput = {
       filename,
@@ -21,6 +25,6 @@ export class XlsxExtractionStrategy implements IExtractionStrategy {
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
 
-    return this.xlsxExtractionService.extractDataFromXlsx(input);
+    return this.xlsxExtractionService.extractWithProcessor(input, context);
   }
 }

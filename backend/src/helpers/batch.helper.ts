@@ -144,7 +144,7 @@ export class BatchHelper {
   }
 
   hasDeterministicBatch(): boolean {
-    return this.deterministicBatch.length > 0;
+    return this.deterministicBatch.length >= this.DETERMINISTIC_BATCH_SIZE;
   }
 
   hasAmbiguousBatch(): boolean {

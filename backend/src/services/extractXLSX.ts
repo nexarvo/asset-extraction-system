@@ -9,6 +9,8 @@ import { AssetMappingHelper } from '../helpers/asset-mapping.helper';
 import { createLogger } from '../helpers/console-logger.helper';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
+import { ExtractionProcessor } from '../helpers/extraction-processor.helper';
+import { ExtractionContext } from '../strategies/extraction-strategy.interface';
 
 @Injectable()
 export class XlsxExtractionService {
@@ -38,6 +40,68 @@ export class XlsxExtractionService {
           result.candidates.length,
           result.warnings,
         ),
+      };
+    } catch (error) {
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+
+      throw new ApplicationError(ErrorCode.XlsxExtractionFailed, undefined, {
+        filename: input.filename,
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async extractWithProcessor(
+    input: AssetFileInput,
+    context: ExtractionContext,
+  ): Promise<ExtractionResult> {
+    try {
+      this.logger.info('Starting XLSX extraction with processor', { filename: input.filename });
+
+      const workbook = this.readWorkbook(input.buffer);
+      const processor = new ExtractionProcessor(context);
+
+      const sampleRows: { row: Record<string, unknown>; sourceRowIndex: number; sourceSheetName?: string }[] = [];
+
+      await this.processWorkbookWithBackpressure(
+        workbook,
+        input.filename,
+        async (candidate) => {
+          if (sampleRows.length < 20) {
+            sampleRows.push({
+              row: candidate.normalizedRowData || candidate.rawRowData || {},
+              sourceRowIndex: candidate.sourceRowIndex,
+              sourceSheetName: candidate.sourceSheetName,
+            });
+          }
+
+          const row = candidate.normalizedRowData || candidate.rawRowData || {};
+          await processor.processRow(row, candidate.sourceRowIndex - 1, candidate.sourceSheetName);
+        },
+      );
+
+      const schema = await processor.inferInitialSchema(sampleRows);
+      processor.setSchema(schema);
+
+      await processor.flush();
+
+      const stats = processor.getStats();
+      const fileType = getSupportedFileType(input);
+
+      return {
+        sourceFile: input.filename,
+        fileType: fileType === SupportedFileType.Xls ? SupportedFileType.Xls : SupportedFileType.Xlsx,
+        metadata: createExtractionMetadata(stats.total, []),
+        processingStats: {
+          totalRows: stats.total,
+          deterministicRows: stats.deterministic,
+          ambiguousRows: stats.ambiguous,
+          persistedCount: stats.deterministic,
+          enrichedCount: stats.ambiguous,
+          errors: [],
+        },
       };
     } catch (error) {
       if (error instanceof ApplicationError) {

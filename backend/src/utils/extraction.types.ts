@@ -38,14 +38,24 @@ export interface AssetFileInput {
   readonly mimeType?: string;
 }
 
+export interface ExtractionProcessingStats {
+  readonly totalRows: number;
+  readonly deterministicRows: number;
+  readonly ambiguousRows: number;
+  readonly persistedCount: number;
+  readonly enrichedCount: number;
+  readonly errors: string[];
+}
+
 export interface ExtractionResult {
   readonly sourceFile: string;
   readonly fileType: SupportedFileType;
-  readonly records: ExtractedAssetRecord[];
+  readonly records?: ExtractedAssetRecord[];
   readonly text?: string;
   readonly strategy?: PdfExtractionStrategy;
   readonly metadata: ExtractionMetadata;
   readonly pdfDocument?: PdfDocument;
+  readonly processingStats?: ExtractionProcessingStats;
 }
 
 export interface ExtractionMetadata {
