@@ -32,6 +32,29 @@ export interface DocumentByJobResponse {
   createdAt: string;
 }
 
+export interface ReviewResponseDto {
+  documentId: string;
+  originalFileName: string;
+  mimeType: string | null;
+  totalFields: number;
+  page: number;
+  pageSize: number;
+  fields: Array<{
+    id: string;
+    fieldName: string;
+    rawValue: string | null;
+    normalizedValue: object | null;
+    confidenceScore: number | null;
+    extractionMethod: string | null;
+    reviewStatus: string;
+    validationStatus: string | null;
+    sourceRowIndex: number | null;
+    sourceSheetName: string | null;
+    isInferred: boolean;
+    createdAt: string;
+  }>;
+}
+
 export const extractionApi = {
   async extract(files: File[]): Promise<ExtractResponse> {
     const formData = new FormData();
@@ -71,6 +94,19 @@ export const extractionApi = {
 
     if (!response.ok) {
       throw new Error(`Failed to get documents: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  async getDocumentReview(documentId: string, page: number = 1, pageSize: number = 10): Promise<ReviewResponseDto> {
+    const response = await fetch(`${apiConfig.baseURL}/documents/${documentId}/review?page=${page}&pageSize=${pageSize}`, {
+      method: 'GET',
+      headers: apiConfig.headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get document review: ${response.status}`);
     }
 
     return response.json();
