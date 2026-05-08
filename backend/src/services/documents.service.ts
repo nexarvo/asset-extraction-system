@@ -3,9 +3,23 @@ import { AppLoggerService } from '../core/app-logger.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
-import { DocumentEntity, DocumentIngestionStatus } from '../entities/document.entity';
-import { ProcessingJobEntity, ProcessingJobStatus } from '../entities/processing-job.entity';
-import { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto, ReviewResponseDto, ExtractedFieldDto } from '../dtos';
+import {
+  DocumentEntity,
+  DocumentIngestionStatus,
+} from '../entities/document.entity';
+import {
+  ProcessingJobEntity,
+  ProcessingJobStatus,
+} from '../entities/processing-job.entity';
+import {
+  CreateDocumentDto,
+  UpdateDocumentDto,
+  DocumentResponseDto,
+  ListDocumentsDto,
+  DocumentWithJobResponseDto,
+  ReviewResponseDto,
+  ExtractedFieldDto,
+} from '../dtos';
 import { JobStatus } from '../utils/extraction.types';
 
 @Injectable()
@@ -29,11 +43,16 @@ export class DocumentsService {
       ingestionStatus: DocumentIngestionStatus.UPLOADED,
     });
 
-    this.logger.log('Document created', 'DocumentsService', { documentId: entity.id });
+    this.logger.log('Document created', 'DocumentsService', {
+      documentId: entity.id,
+    });
     return this.toResponseDto(entity);
   }
 
-  async findAll(options?: { skip?: number; take?: number }): Promise<{ documents: DocumentResponseDto[]; total: number }> {
+  async findAll(options?: {
+    skip?: number;
+    take?: number;
+  }): Promise<{ documents: DocumentResponseDto[]; total: number }> {
     const [entities, total] = await this.documentRepository.findAll(options);
     return {
       documents: entities.map((entity) => this.toResponseDto(entity)),
@@ -41,13 +60,21 @@ export class DocumentsService {
     };
   }
 
-  async findByJobIds(dto: ListDocumentsDto): Promise<DocumentWithJobResponseDto[]> {
+  async findByJobIds(
+    dto: ListDocumentsDto,
+  ): Promise<DocumentWithJobResponseDto[]> {
     if (!dto.jobIds || dto.jobIds.length === 0) {
       return [];
     }
 
     const jobs = await this.processingJobRepository.findByIds(dto.jobIds);
-    const documentIds = [...new Set(jobs.map((job) => job.documentId).filter((id): id is string => id !== null))];
+    const documentIds = [
+      ...new Set(
+        jobs
+          .map((job) => job.documentId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
     const documents = await this.documentRepository.findByIds(documentIds);
 
     const documentMap = new Map(documents.map((doc) => [doc.id, doc]));
@@ -74,7 +101,10 @@ export class DocumentsService {
     return this.toResponseDto(entity);
   }
 
-  async update(id: string, dto: UpdateDocumentDto): Promise<DocumentResponseDto | null> {
+  async update(
+    id: string,
+    dto: UpdateDocumentDto,
+  ): Promise<DocumentResponseDto | null> {
     const entity = await this.documentRepository.findById(id);
     if (!entity) {
       return null;
@@ -115,7 +145,7 @@ export class DocumentsService {
       case ProcessingJobStatus.RETRYING:
         return 'retrying';
       default:
-        return status as JobStatus;
+        return status;
     }
   }
 
@@ -150,7 +180,10 @@ export class DocumentsService {
     };
   }
 
-  private toDocumentWithJobResponseDto(document: DocumentEntity, job: ProcessingJobEntity): DocumentWithJobResponseDto {
+  private toDocumentWithJobResponseDto(
+    document: DocumentEntity,
+    job: ProcessingJobEntity,
+  ): DocumentWithJobResponseDto {
     return {
       jobId: job.id,
       documentId: document.id,
@@ -165,13 +198,22 @@ export class DocumentsService {
     };
   }
 
-  async review(documentId: string, page: number = 1, pageSize: number = 50): Promise<ReviewResponseDto | null> {
+  async review(
+    documentId: string,
+    page: number = 1,
+    pageSize: number = 50,
+  ): Promise<ReviewResponseDto | null> {
     const document = await this.documentRepository.findById(documentId);
     if (!document) {
       return null;
     }
 
-    const { fields, total } = await this.extractedAssetFieldRepository.findByDocumentIdPaginated(documentId, page, pageSize);
+    const { fields, total } =
+      await this.extractedAssetFieldRepository.findByDocumentIdPaginated(
+        documentId,
+        page,
+        pageSize,
+      );
 
     return {
       documentId: document.id,
@@ -198,4 +240,12 @@ export class DocumentsService {
   }
 }
 
-export { CreateDocumentDto, UpdateDocumentDto, DocumentResponseDto, ListDocumentsDto, DocumentWithJobResponseDto, ReviewResponseDto, ExtractedFieldDto };
+export {
+  CreateDocumentDto,
+  UpdateDocumentDto,
+  DocumentResponseDto,
+  ListDocumentsDto,
+  DocumentWithJobResponseDto,
+  ReviewResponseDto,
+  ExtractedFieldDto,
+};

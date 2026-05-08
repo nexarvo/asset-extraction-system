@@ -10,25 +10,43 @@ export class AssetRelationshipRepository {
     private readonly repository: Repository<AssetRelationshipEntity>,
   ) {}
 
-  async create(data: Partial<AssetRelationshipEntity>): Promise<AssetRelationshipEntity> {
+  async create(
+    data: Partial<AssetRelationshipEntity>,
+  ): Promise<AssetRelationshipEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
   }
 
   async findById(id: string): Promise<AssetRelationshipEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<AssetRelationshipEntity> });
+    return this.repository.findOne({
+      where: { id },
+    });
   }
 
-  async findByParentAssetId(parentAssetId: string): Promise<AssetRelationshipEntity[]> {
-    return this.repository.find({ where: { parentAssetId } as FindOptionsWhere<AssetRelationshipEntity>, relations: ['childAsset'] });
+  async findByParentAssetId(
+    parentAssetId: string,
+  ): Promise<AssetRelationshipEntity[]> {
+    return this.repository.find({
+      where: { parentAssetId } as FindOptionsWhere<AssetRelationshipEntity>,
+      relations: ['childAsset'],
+    });
   }
 
-  async findByChildAssetId(childAssetId: string): Promise<AssetRelationshipEntity[]> {
-    return this.repository.find({ where: { childAssetId } as FindOptionsWhere<AssetRelationshipEntity>, relations: ['parentAsset'] });
+  async findByChildAssetId(
+    childAssetId: string,
+  ): Promise<AssetRelationshipEntity[]> {
+    return this.repository.find({
+      where: { childAssetId } as FindOptionsWhere<AssetRelationshipEntity>,
+      relations: ['parentAsset'],
+    });
   }
 
-  async findByRelationshipType(relationshipType: string): Promise<AssetRelationshipEntity[]> {
-    return this.repository.find({ where: { relationshipType } as FindOptionsWhere<AssetRelationshipEntity> });
+  async findByRelationshipType(
+    relationshipType: string,
+  ): Promise<AssetRelationshipEntity[]> {
+    return this.repository.find({
+      where: { relationshipType } as FindOptionsWhere<AssetRelationshipEntity>,
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -36,10 +54,14 @@ export class AssetRelationshipRepository {
   }
 
   async deleteByParentAssetId(parentAssetId: string): Promise<void> {
-    await this.repository.delete({ parentAssetId } as FindOptionsWhere<AssetRelationshipEntity>);
+    await this.repository.delete({
+      parentAssetId,
+    });
   }
 
   async deleteByChildAssetId(childAssetId: string): Promise<void> {
-    await this.repository.delete({ childAssetId } as FindOptionsWhere<AssetRelationshipEntity>);
+    await this.repository.delete({
+      childAssetId,
+    });
   }
 }

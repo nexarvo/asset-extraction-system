@@ -13,7 +13,11 @@ import { normalizeCsvHeaders } from '../utils/csv.utils';
 import { createExtractionMetadata } from '../utils/file.utils';
 import { CsvAssetMapperService } from './csvAssetMapper.service';
 import { CsvRowValidator } from './csv-row-validator';
-import { RawCsvRow, ParsedCsvRow, ExtractedAssetCandidate } from '../utils/csv-stream.types';
+import {
+  RawCsvRow,
+  ParsedCsvRow,
+  ExtractedAssetCandidate,
+} from '../utils/csv-stream.types';
 import { StreamingBatchProcessor } from './streaming-batch-processor';
 
 type CsvParserRow = Record<string, string | undefined>;
@@ -21,7 +25,9 @@ type CsvParserRow = Record<string, string | undefined>;
 export interface CsvExtractionOptions {
   useBatchPersistence?: boolean;
   batchSize?: number;
-  onBatchFlush?: (result: { candidates: ExtractedAssetCandidate[] }) => Promise<void>;
+  onBatchFlush?: (result: {
+    candidates: ExtractedAssetCandidate[];
+  }) => Promise<void>;
 }
 
 @Injectable()
@@ -32,7 +38,10 @@ export class CsvExtractionService {
     private readonly rowValidator: CsvRowValidator,
   ) {}
 
-  async extractDataFromCsv(input: AssetFileInput, options?: CsvExtractionOptions): Promise<ExtractionResult> {
+  async extractDataFromCsv(
+    input: AssetFileInput,
+    options?: CsvExtractionOptions,
+  ): Promise<ExtractionResult> {
     try {
       this.logger.log('starting csv extraction', 'CsvExtractionService', {
         filename: input.filename,
@@ -66,10 +75,7 @@ export class CsvExtractionService {
     input: AssetFileInput,
     options: CsvExtractionOptions,
   ): Promise<ExtractionResult> {
-    const batchProcessor = new StreamingBatchProcessor(
-      {} as any,
-      this.logger,
-    );
+    const batchProcessor = new StreamingBatchProcessor({} as any, this.logger);
 
     batchProcessor.configure({
       batchSize: options.batchSize || 500,
@@ -79,9 +85,13 @@ export class CsvExtractionService {
 
     const warnings: string[] = [];
 
-    await this.processCsvStreamWithBackpressure(input, async (candidate) => {
-      await batchProcessor.addCandidate(candidate);
-    }, warnings);
+    await this.processCsvStreamWithBackpressure(
+      input,
+      async (candidate) => {
+        await batchProcessor.addCandidate(candidate);
+      },
+      warnings,
+    );
 
     const result = await batchProcessor.flushRemaining();
 
@@ -137,7 +147,9 @@ export class CsvExtractionService {
           const candidate = this.csvAssetMapperService.mapRow(parsedRow);
           await onCandidate(candidate);
         } catch (error) {
-          warnings.push(`row ${rowIndex}: ${error instanceof Error ? error.message : String(error)}`);
+          warnings.push(
+            `row ${rowIndex}: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       });
 
@@ -151,10 +163,14 @@ export class CsvExtractionService {
       });
 
       parser.on('end', () => {
-        this.logger.log('csv extraction with backpressure completed', 'CsvExtractionService', {
-          filename: input.filename,
-          rowCount: rowIndex,
-        });
+        this.logger.log(
+          'csv extraction with backpressure completed',
+          'CsvExtractionService',
+          {
+            filename: input.filename,
+            rowCount: rowIndex,
+          },
+        );
         resolve();
       });
 
@@ -268,12 +284,12 @@ export class CsvExtractionService {
     rowIndex: number,
   ): RawCsvRow {
     const raw: Record<string, string> = {};
-    
+
     for (const header of headers) {
       const originalKey = this.headerMapping.get(header) || header;
       raw[header] = data[originalKey] ?? '';
     }
-    
+
     return {
       headers,
       rowIndex,

@@ -15,7 +15,11 @@ import { CsvExtractionService } from '../services/extractCSV';
 import { JobDispatcherService } from '../services/job-dispatcher.service';
 import { PdfExtractionService } from '../services/extractPDF';
 import { XlsxExtractionService } from '../services/extractXLSX';
-import { SupportedFileType, QueuedJobResponse, JobStatusResponse } from '../utils/extraction.types';
+import {
+  SupportedFileType,
+  QueuedJobResponse,
+  JobStatusResponse,
+} from '../utils/extraction.types';
 import type {
   AssetFileInput,
   StoredExtraction,
@@ -123,7 +127,9 @@ export class ExtractionController {
   }
 
   @Post('extract')
-  @UseInterceptors(FilesInterceptor('files', 10, MULTI_FILE_INTERCEPTOR_OPTIONS))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, MULTI_FILE_INTERCEPTOR_OPTIONS),
+  )
   async extractMultiFile(
     @UploadedFiles(EXTRACT_UPLOAD_PIPE) files: AssetFileInput[],
   ): Promise<{ jobs: QueuedJobResponse[] }> {

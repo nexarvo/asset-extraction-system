@@ -13,11 +13,7 @@ export class ExtractionStrategyFactory {
   ) {}
 
   getStrategy(fileType: string): IExtractionStrategy | null {
-    const strategies = [
-      this.csvStrategy,
-      this.xlsxStrategy,
-      this.pdfStrategy,
-    ];
+    const strategies = [this.csvStrategy, this.xlsxStrategy, this.pdfStrategy];
 
     return strategies.find((s) => s.canHandle(fileType)) ?? null;
   }

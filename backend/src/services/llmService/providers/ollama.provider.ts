@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { LLMProvider } from '../interfaces/llm-provider.interface';
-import { LLMConfig } from '../../../core/config/llm.config';
+import type { LLMProvider } from '../interfaces/llm-provider.interface';
+import type { LLMConfig } from '../../../core/config/llm.config';
 
 @Injectable()
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
 
-  constructor(private config: LLMConfig) {
+  constructor(config: LLMConfig) {
     this.baseUrl = config.ollama?.baseUrl || 'http://localhost:11434';
     this.model = config.model;
   }
@@ -34,7 +34,7 @@ export class OllamaProvider implements LLMProvider {
       throw new Error(`Ollama API error: ${error}`);
     }
 
-    const data = await response.json() as { response: string };
+    const data = (await response.json()) as { response: string };
     const text = data.response;
 
     if (!text) {

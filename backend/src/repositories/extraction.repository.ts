@@ -7,7 +7,11 @@ export class ExtractionRepository {
 
   async save(result: ExtractionResult): Promise<StoredExtraction> {
     const id = `ext_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const record: StoredExtraction = { id, result, createdAt: new Date().toISOString() };
+    const record: StoredExtraction = {
+      id,
+      result,
+      createdAt: new Date().toISOString(),
+    };
     this.records.set(id, record);
     return record;
   }

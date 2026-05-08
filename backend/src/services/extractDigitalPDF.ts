@@ -84,11 +84,10 @@ export class DigitalPdfExtractionService {
     const pages: PdfPage[] = [];
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      this.logger.log(
-        'parsing pdf page',
-        'DigitalPdfExtractionService',
-        { pageNumber: pageNum, totalPages: pdf.numPages },
-      );
+      this.logger.log('parsing pdf page', 'DigitalPdfExtractionService', {
+        pageNumber: pageNum,
+        totalPages: pdf.numPages,
+      });
 
       const page = await pdf.getPage(pageNum);
       const items = await this.extractTextItems(page);
@@ -113,7 +112,9 @@ export class DigitalPdfExtractionService {
     for (const item of textContent.items) {
       if ('str' in item && item.str) {
         const transform = item.transform;
-        const fontSize = Math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]);
+        const fontSize = Math.sqrt(
+          transform[0] * transform[0] + transform[1] * transform[1],
+        );
 
         items.push({
           text: item.str,
@@ -129,7 +130,10 @@ export class DigitalPdfExtractionService {
     return items;
   }
 
-  private groupSpatially(items: PdfTextItem[], pageNumber: number): TextBlock[] {
+  private groupSpatially(
+    items: PdfTextItem[],
+    pageNumber: number,
+  ): TextBlock[] {
     if (items.length === 0) {
       return [];
     }
@@ -222,7 +226,8 @@ export class DigitalPdfExtractionService {
       return 'table';
     }
 
-    const avgFontSize = items.reduce((sum, i) => sum + (i.fontSize ?? 0), 0) / items.length;
+    const avgFontSize =
+      items.reduce((sum, i) => sum + (i.fontSize ?? 0), 0) / items.length;
     if (avgFontSize > 14 && items.length <= 2) {
       return 'header';
     }
@@ -233,7 +238,9 @@ export class DigitalPdfExtractionService {
   private computeVariance(values: number[]): number {
     if (values.length === 0) return 0;
     const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-    return values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    return (
+      values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length
+    );
   }
 
   private computeBoundingBox(items: PdfTextItem[]) {

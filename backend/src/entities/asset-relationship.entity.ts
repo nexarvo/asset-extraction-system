@@ -37,7 +37,13 @@ export class AssetRelationshipEntity {
   @Column({ name: 'relationship_type', type: 'varchar', nullable: true })
   relationshipType!: string | null;
 
-  @Column({ name: 'confidence_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'confidence_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   confidenceScore!: number | null;
 
   @CreateDateColumn({ name: 'created_at' })

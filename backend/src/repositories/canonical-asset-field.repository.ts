@@ -10,24 +10,47 @@ export class CanonicalAssetFieldRepository {
     private readonly repository: Repository<CanonicalAssetFieldEntity>,
   ) {}
 
-  async create(data: Partial<CanonicalAssetFieldEntity>): Promise<CanonicalAssetFieldEntity> {
+  async create(
+    data: Partial<CanonicalAssetFieldEntity>,
+  ): Promise<CanonicalAssetFieldEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
   }
 
   async findById(id: string): Promise<CanonicalAssetFieldEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<CanonicalAssetFieldEntity>, relations: ['selectedEvidence'] });
+    return this.repository.findOne({
+      where: { id },
+      relations: ['selectedEvidence'],
+    });
   }
 
-  async findByCanonicalAssetId(canonicalAssetId: string): Promise<CanonicalAssetFieldEntity[]> {
-    return this.repository.find({ where: { canonicalAssetId } as FindOptionsWhere<CanonicalAssetFieldEntity> });
+  async findByCanonicalAssetId(
+    canonicalAssetId: string,
+  ): Promise<CanonicalAssetFieldEntity[]> {
+    return this.repository.find({
+      where: {
+        canonicalAssetId,
+      } as FindOptionsWhere<CanonicalAssetFieldEntity>,
+    });
   }
 
-  async findByFieldName(canonicalAssetId: string, fieldName: string): Promise<CanonicalAssetFieldEntity | null> {
-    return this.repository.findOne({ where: { canonicalAssetId, fieldName } as FindOptionsWhere<CanonicalAssetFieldEntity> });
+  async findByFieldName(
+    canonicalAssetId: string,
+    fieldName: string,
+  ): Promise<CanonicalAssetFieldEntity | null> {
+    return this.repository.findOne({
+      where: {
+        canonicalAssetId,
+        fieldName,
+      },
+    });
   }
 
-  async updateResolvedValue(id: string, resolvedValue: object, explanation?: string): Promise<void> {
+  async updateResolvedValue(
+    id: string,
+    resolvedValue: object,
+    explanation?: string,
+  ): Promise<void> {
     await this.repository.update(id, { resolvedValue, explanation });
   }
 
@@ -40,6 +63,8 @@ export class CanonicalAssetFieldRepository {
   }
 
   async deleteByCanonicalAssetId(canonicalAssetId: string): Promise<void> {
-    await this.repository.delete({ canonicalAssetId } as FindOptionsWhere<CanonicalAssetFieldEntity>);
+    await this.repository.delete({
+      canonicalAssetId,
+    });
   }
 }

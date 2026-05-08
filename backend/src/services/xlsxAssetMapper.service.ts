@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ParsedXlsxRow, ExtractedAssetCandidate, ExtractedFieldCandidate } from '../utils/csv-stream.types';
+import {
+  ParsedXlsxRow,
+  ExtractedAssetCandidate,
+  ExtractedFieldCandidate,
+} from '../utils/csv-stream.types';
 
 @Injectable()
 export class XlsxAssetMapperService {
@@ -59,7 +63,7 @@ export class XlsxAssetMapperService {
       overallConfidence: this.calculateOverallConfidence(fields),
       rawRowData: parsedRow.data,
       normalizedRowData: Object.fromEntries(
-        fields.map(f => [f.fieldName, f.normalizedValue])
+        fields.map((f) => [f.fieldName, f.normalizedValue]),
       ),
     };
   }
@@ -68,25 +72,31 @@ export class XlsxAssetMapperService {
     return parsedRows.map((row) => this.mapRow(row));
   }
 
-  private normalizeValue(fieldName: string, value: string | number | null): unknown {
+  private normalizeValue(
+    fieldName: string,
+    value: string | number | null,
+  ): unknown {
     if (value === null) return null;
 
     switch (fieldName) {
       case 'latitude':
       case 'lat': {
-        const num = typeof value === 'number' ? value : parseFloat(String(value));
+        const num =
+          typeof value === 'number' ? value : parseFloat(String(value));
         return isNaN(num) ? null : num;
       }
       case 'longitude':
       case 'lng':
       case 'lon': {
-        const num = typeof value === 'number' ? value : parseFloat(String(value));
+        const num =
+          typeof value === 'number' ? value : parseFloat(String(value));
         return isNaN(num) ? null : num;
       }
       case 'asset_value':
       case 'value':
       case 'capacity': {
-        const strValue = typeof value === 'number' ? String(value) : String(value);
+        const strValue =
+          typeof value === 'number' ? String(value) : String(value);
         const cleaned = strValue.replace(/[,$]/g, '').trim();
         const num = parseFloat(cleaned);
         return isNaN(num) ? null : num;
@@ -96,7 +106,10 @@ export class XlsxAssetMapperService {
     }
   }
 
-  private calculateConfidence(fieldName: string, value: string | number | null): number {
+  private calculateConfidence(
+    fieldName: string,
+    value: string | number | null,
+  ): number {
     if (value === null || value === '') return 0;
 
     switch (fieldName) {
@@ -104,7 +117,8 @@ export class XlsxAssetMapperService {
         return value !== null ? 0.9 : 0;
       case 'latitude':
       case 'longitude': {
-        const num = typeof value === 'number' ? value : parseFloat(String(value));
+        const num =
+          typeof value === 'number' ? value : parseFloat(String(value));
         if (isNaN(num)) return 0.3;
         if (fieldName === 'latitude' && (num < -90 || num > 90)) return 0.3;
         if (fieldName === 'longitude' && (num < -180 || num > 180)) return 0.3;
@@ -118,11 +132,16 @@ export class XlsxAssetMapperService {
     }
   }
 
-  private calculateOverallConfidence(fields: ExtractedFieldCandidate[]): number {
+  private calculateOverallConfidence(
+    fields: ExtractedFieldCandidate[],
+  ): number {
     const nonNullFields = fields.filter((f) => f.rawValue !== null);
     if (nonNullFields.length === 0) return 0;
 
-    const totalConfidence = nonNullFields.reduce((sum, f) => sum + (f.confidenceScore || 0), 0);
+    const totalConfidence = nonNullFields.reduce(
+      (sum, f) => sum + (f.confidenceScore || 0),
+      0,
+    );
     return totalConfidence / nonNullFields.length;
   }
 }

@@ -27,7 +27,8 @@ export class BatchExtractionAccumulator implements OnModuleInit {
   private lastCheckpoint: ExtractionCheckpoint | null = null;
 
   private batchSize: number = 500;
-  private flushCallback: ((result: BatchFlushResult) => Promise<void>) | null = null;
+  private flushCallback: ((result: BatchFlushResult) => Promise<void>) | null =
+    null;
 
   onModuleInit() {}
 
@@ -35,7 +36,9 @@ export class BatchExtractionAccumulator implements OnModuleInit {
     this.batchSize = batchSize;
   }
 
-  setFlushCallback(callback: (result: BatchFlushResult) => Promise<void>): void {
+  setFlushCallback(
+    callback: (result: BatchFlushResult) => Promise<void>,
+  ): void {
     this.flushCallback = callback;
   }
 
@@ -67,7 +70,10 @@ export class BatchExtractionAccumulator implements OnModuleInit {
     const checkpoint: ExtractionCheckpoint = {
       fileId: this.context.fileId,
       sheetName: this.context.sheetName,
-      lastProcessedRow: candidates.reduce((max, c) => Math.max(max, c.sourceRowIndex), 0),
+      lastProcessedRow: candidates.reduce(
+        (max, c) => Math.max(max, c.sourceRowIndex),
+        0,
+      ),
       totalPersisted: candidates.length,
     };
 

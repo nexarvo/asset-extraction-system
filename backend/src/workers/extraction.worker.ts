@@ -6,7 +6,10 @@ import { ExtractionPersistenceService } from '../services/extraction-persistence
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
 import { EXTRACTION_QUEUE_NAME } from '../queues/extraction.queue';
-import { ExtractionJobData, ExtractionJobResult } from '../utils/extraction.types';
+import {
+  ExtractionJobData,
+  ExtractionJobResult,
+} from '../utils/extraction.types';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import { ProcessingJobStatus } from '../entities/processing-job.entity';
@@ -14,6 +17,7 @@ import { DataSource } from 'typeorm';
 import { XlsxExtractionService } from '../services/extractXLSX';
 import { SupportedFileType } from '../utils/extraction.types';
 import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
+import { LLMEnrichmentService } from '../services/llmService/llm.service';
 
 const WORKER_CONCURRENCY = 3;
 
@@ -29,6 +33,7 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     private readonly extractionErrorRepository: ExtractionErrorRepository,
     private readonly dataSource: DataSource,
     private readonly xlsxExtractionService: XlsxExtractionService,
+    private readonly llmEnrichmentService: LLMEnrichmentService,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
       EXTRACTION_QUEUE_NAME,
@@ -41,19 +46,20 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     this.worker.on('completed', async (job) => {
       if (job && job.data?.jobId) {
         await this.markJobCompleted(job.data.jobId);
-        this.logger.log(
-          'job completed',
-          'ExtractionWorker',
-          { jobId: job.data.jobId, filename: job.data?.filename },
-        );
+        this.logger.log('job completed', 'ExtractionWorker', {
+          jobId: job.data.jobId,
+          filename: job.data?.filename,
+        });
       }
     });
 
     this.worker.on('failed', async (job, error) => {
       if (job && job.data?.jobId) {
         await this.setJobError(job.data.jobId, error.message);
-        
-        const jobExists = await this.processingJobRepository.findById(job.data.jobId);
+
+        const jobExists = await this.processingJobRepository.findById(
+          job.data.jobId,
+        );
         if (jobExists) {
           try {
             await this.extractionErrorRepository.create({
@@ -62,23 +68,24 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
               errorCode: 'JOB_FAILED',
               message: error.message,
               stackTrace: error.stack || undefined,
-              recoverable: job.opts?.attempts ? job.attemptsMade < (job.opts.attempts as number) : false,
+              recoverable: job.opts?.attempts
+                ? job.attemptsMade < job.opts.attempts
+                : false,
             });
           } catch (err) {
-            this.logger.warn('Failed to create extraction error', 'ExtractionWorker', { error: (err as Error).message });
+            this.logger.warn(
+              'Failed to create extraction error',
+              'ExtractionWorker',
+              { error: (err as Error).message },
+            );
           }
         }
-        
-        this.logger.error(
-          'job failed',
-          error.stack,
-          'ExtractionWorker',
-          {
-            jobId: job.data.jobId,
-            filename: job.data?.filename,
-            error: error.message,
-          },
-        );
+
+        this.logger.error('job failed', error.stack, 'ExtractionWorker', {
+          jobId: job.data.jobId,
+          filename: job.data?.filename,
+          error: error.message,
+        });
       }
     });
   }
@@ -87,7 +94,10 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     await this.processingJobRepository.markCompleted(jobId);
   }
 
-  private async setJobError(jobId: string, errorMessage: string): Promise<void> {
+  private async setJobError(
+    jobId: string,
+    errorMessage: string,
+  ): Promise<void> {
     await this.processingJobRepository.setError(jobId, errorMessage);
   }
 
@@ -96,36 +106,40 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   ): Promise<ExtractionJobResult> {
     const { jobId, filename, buffer, fileType } = job.data;
 
-    const bufferData = typeof buffer === 'string' ? Buffer.from(buffer, 'base64') : buffer;
+    const bufferData =
+      typeof buffer === 'string' ? Buffer.from(buffer, 'base64') : buffer;
 
-    this.logger.log(
-      'processing job',
-      'ExtractionWorker',
-      {
-        jobId,
-        filename,
-        fileType,
-        attempt: job.attemptsMade,
-      },
+    this.logger.log('processing job', 'ExtractionWorker', {
+      jobId,
+      filename,
+      fileType,
+      attempt: job.attemptsMade,
+    });
+
+    await this.processingJobRepository.updateStatus(
+      jobId,
+      ProcessingJobStatus.RUNNING,
     );
-
-    await this.processingJobRepository.updateStatus(jobId, ProcessingJobStatus.RUNNING);
 
     const processingJob = await this.processingJobRepository.findById(jobId);
     let documentId = processingJob?.documentId;
 
     if (!documentId) {
-      this.logger.warn('No document associated with job, creating one', 'ExtractionWorker', { jobId });
-      
+      this.logger.warn(
+        'No document associated with job, creating one',
+        'ExtractionWorker',
+        { jobId },
+      );
+
       const doc = await this.dataSource.query(
         `INSERT INTO documents (id, original_file_name, storage_key, ingestion_status, created_at)
          VALUES (gen_random_uuid(), $1, $2, 'processing', now())
          RETURNING id`,
         [filename, `uploads/${Date.now()}-${filename}`],
       );
-      
+
       documentId = doc[0]?.id;
-      
+
       if (documentId) {
         await this.dataSource.query(
           `UPDATE processing_jobs SET document_id = $1 WHERE id = $2`,
@@ -141,9 +155,20 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
     const isXlsx = fileType === 'xlsx' || fileType === 'xls';
     if (isXlsx) {
-      await this.processXlsxWithStreaming(bufferData, filename, documentId, jobId);
+      await this.processXlsxWithStreaming(
+        bufferData,
+        filename,
+        documentId,
+        jobId,
+      );
     } else {
-      await this.processWithStrategy(bufferData, filename, fileType, documentId, jobId);
+      await this.processWithStrategy(
+        bufferData,
+        filename,
+        fileType,
+        documentId,
+        jobId,
+      );
     }
 
     return {
@@ -171,7 +196,7 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         if (candidate.rawRowData || candidate.normalizedRowData) {
           batch.push(candidate);
           if (batch.length >= BATCH_SIZE) {
-            await this.persistBatchAndLogErrors(batch, documentId, jobId);
+            await this.processXlsxBatch(batch, documentId, jobId);
             batch.length = 0;
           }
         }
@@ -179,11 +204,24 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     );
 
     if (batch.length > 0) {
-      await this.persistBatchAndLogErrors(batch, documentId, jobId);
+      await this.processXlsxBatch(batch, documentId, jobId);
     }
   }
 
-  private async persistBatchAndLogErrors(candidates: ExtractedAssetCandidate[], documentId: string, jobId: string): Promise<void> {
+  private async processXlsxBatch(
+    batch: ExtractedAssetCandidate[],
+    documentId: string,
+    jobId: string,
+  ): Promise<void> {
+    await this.performLLMEnrichment(batch, documentId, jobId);
+    await this.persistBatchAndLogErrors(batch, documentId, jobId);
+  }
+
+  private async persistBatchAndLogErrors(
+    candidates: ExtractedAssetCandidate[],
+    documentId: string,
+    jobId: string,
+  ): Promise<void> {
     const result = await this.persistenceService.persistBatchWithTransaction(
       documentId,
       jobId,
@@ -224,7 +262,10 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    this.logger.log('extracting with strategy', 'ExtractionWorker', { fileType, strategy: strategy.constructor.name });
+    this.logger.log('extracting with strategy', 'ExtractionWorker', {
+      fileType,
+      strategy: strategy.constructor.name,
+    });
 
     const result = await strategy.extract(bufferData, filename);
 
@@ -235,25 +276,28 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     });
 
     const candidates = this.mapToAssetCandidates(result.records, documentId);
-    const validCandidates = candidates.filter(c => (c.rawRowData && Object.keys(c.rawRowData).length > 0) || (c.normalizedRowData && Object.keys(c.normalizedRowData).length > 0));
+    const validCandidates = candidates.filter(
+      (c) =>
+        (c.rawRowData && Object.keys(c.rawRowData).length > 0) ||
+        (c.normalizedRowData && Object.keys(c.normalizedRowData).length > 0),
+    );
 
     if (validCandidates.length > 0) {
-      const persistenceResult = await this.persistenceService.persistBatchWithTransaction(
-        documentId,
-        jobId,
-        validCandidates,
-      );
+      await this.performLLMEnrichment(validCandidates, documentId, jobId);
 
-      this.logger.log(
-        'batch persistence completed',
-        'ExtractionWorker',
-        {
+      const persistenceResult =
+        await this.persistenceService.persistBatchWithTransaction(
+          documentId,
           jobId,
-          savedAssets: persistenceResult.savedAssets,
-          savedFields: persistenceResult.savedFields,
-          errors: persistenceResult.errors.length,
-        },
-      );
+          validCandidates,
+        );
+
+      this.logger.log('batch persistence completed', 'ExtractionWorker', {
+        jobId,
+        savedAssets: persistenceResult.savedAssets,
+        savedFields: persistenceResult.savedFields,
+        errors: persistenceResult.errors.length,
+      });
 
       for (const error of persistenceResult.errors) {
         await this.persistenceService.logError(
@@ -278,28 +322,118 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
           return record as unknown as import('../utils/csv-stream.types').ExtractedAssetCandidate;
         }
 
-        const metaFields = ['sheetName', 'sourceSheetName', 'sourceRowIndex', 'overallConfidence', 'rawAssetName'];
+        const metaFields = [
+          'sheetName',
+          'sourceSheetName',
+          'sourceRowIndex',
+          'overallConfidence',
+          'rawAssetName',
+        ];
         const rawRowData: Record<string, string | number | null> = {};
         const normalizedRowData: Record<string, unknown> = {};
-        
+
         for (const [key, value] of Object.entries(record)) {
           if (!metaFields.includes(key) && key && key.trim() !== '') {
-            rawRowData[key] = value !== undefined ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : null;
+            rawRowData[key] =
+              value !== undefined
+                ? typeof value === 'object'
+                  ? JSON.stringify(value)
+                  : String(value)
+                : null;
             normalizedRowData[key] = value;
           }
         }
-        
+
         return {
-          rawAssetName: String(record['asset_name'] || record['name'] || record['Asset Name'] || record['asset'] || `asset_${index + 1}`),
+          rawAssetName: String(
+            record['asset_name'] ||
+              record['name'] ||
+              record['Asset Name'] ||
+              record['asset'] ||
+              `asset_${index + 1}`,
+          ),
           fields: [],
           sourceRowIndex: index + 1,
-          sourceSheetName: sourceSheetName || (record['sheetName'] as string) || undefined,
+          sourceSheetName:
+            sourceSheetName || (record['sheetName'] as string) || undefined,
           overallConfidence: 0.8,
-          rawRowData: Object.keys(rawRowData).length > 0 ? rawRowData : undefined,
-          normalizedRowData: Object.keys(normalizedRowData).length > 0 ? normalizedRowData : undefined,
+          rawRowData:
+            Object.keys(rawRowData).length > 0 ? rawRowData : undefined,
+          normalizedRowData:
+            Object.keys(normalizedRowData).length > 0
+              ? normalizedRowData
+              : undefined,
         };
       })
-      .filter(c => (c as any).rawRowData !== undefined || (c as any).normalizedRowData !== undefined);
+      .filter(
+        (c) =>
+          (c as any).rawRowData !== undefined ||
+          (c as any).normalizedRowData !== undefined,
+      );
+  }
+
+  private async performLLMEnrichment(
+    candidates: ExtractedAssetCandidate[],
+    documentId: string,
+    jobId: string,
+    sourceSheetName?: string,
+  ): Promise<ExtractedAssetCandidate[]> {
+    if (candidates.length === 0) {
+      return candidates;
+    }
+
+    try {
+      const columns = this.extractColumns(candidates);
+      const rows = candidates.map(
+        (c) => c.normalizedRowData || c.rawRowData || {},
+      );
+
+      const enrichmentResult = await this.llmEnrichmentService.enrichExtraction(
+        {
+          documentId,
+          extractionJobId: jobId,
+          columns,
+          rows: rows,
+          sourceSheetName,
+        },
+      );
+
+      if (enrichmentResult.enrichedFields.length > 0) {
+        await this.llmEnrichmentService.persistEnrichmentResults(
+          enrichmentResult,
+        );
+
+        this.logger.log('LLM enrichment completed', 'ExtractionWorker', {
+          jobId,
+          enrichedFields: enrichmentResult.enrichedFields.length,
+          reviewItems: enrichmentResult.reviewItems.length,
+          validationFlags: enrichmentResult.validationFlags.length,
+        });
+      }
+
+      return candidates;
+    } catch (error) {
+      this.logger.warn(
+        'LLM enrichment failed, continuing with basic extraction',
+        'ExtractionWorker',
+        {
+          jobId,
+          error: (error as Error).message,
+        },
+      );
+      return candidates;
+    }
+  }
+
+  private extractColumns(candidates: ExtractedAssetCandidate[]): string[] {
+    const columnsSet = new Set<string>();
+    for (const candidate of candidates) {
+      const rowData = candidate.normalizedRowData || candidate.rawRowData;
+      if (rowData) {
+        Object.keys(rowData).forEach((col) => columnsSet.add(col));
+      }
+    }
+    return Array.from(columnsSet);
   }
 
   private getWorkerOptions() {
@@ -313,11 +447,9 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    this.logger.log(
-      'extraction worker started',
-      'ExtractionWorker',
-      { concurrency: WORKER_CONCURRENCY },
-    );
+    this.logger.log('extraction worker started', 'ExtractionWorker', {
+      concurrency: WORKER_CONCURRENCY,
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

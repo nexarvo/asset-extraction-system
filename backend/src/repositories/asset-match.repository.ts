@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
-import { AssetMatchEntity, AssetMatchDecision } from '../entities/asset-match.entity';
+import {
+  AssetMatchEntity,
+  AssetMatchDecision,
+} from '../entities/asset-match.entity';
 
 @Injectable()
 export class AssetMatchRepository {
@@ -16,26 +19,48 @@ export class AssetMatchRepository {
   }
 
   async findById(id: string): Promise<AssetMatchEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<AssetMatchEntity> });
+    return this.repository.findOne({
+      where: { id },
+    });
   }
 
-  async findByExtractedAssetId(extractedAssetId: string): Promise<AssetMatchEntity[]> {
-    return this.repository.find({ where: { extractedAssetId } as FindOptionsWhere<AssetMatchEntity>, relations: ['canonicalAsset'] });
+  async findByExtractedAssetId(
+    extractedAssetId: string,
+  ): Promise<AssetMatchEntity[]> {
+    return this.repository.find({
+      where: { extractedAssetId } as FindOptionsWhere<AssetMatchEntity>,
+      relations: ['canonicalAsset'],
+    });
   }
 
-  async findByCanonicalAssetId(canonicalAssetId: string): Promise<AssetMatchEntity[]> {
-    return this.repository.find({ where: { canonicalAssetId } as FindOptionsWhere<AssetMatchEntity>, relations: ['extractedAsset'] });
+  async findByCanonicalAssetId(
+    canonicalAssetId: string,
+  ): Promise<AssetMatchEntity[]> {
+    return this.repository.find({
+      where: { canonicalAssetId } as FindOptionsWhere<AssetMatchEntity>,
+      relations: ['extractedAsset'],
+    });
   }
 
-  async findByDecision(decision: AssetMatchDecision): Promise<AssetMatchEntity[]> {
-    return this.repository.find({ where: { decision } as FindOptionsWhere<AssetMatchEntity> });
+  async findByDecision(
+    decision: AssetMatchDecision,
+  ): Promise<AssetMatchEntity[]> {
+    return this.repository.find({
+      where: { decision } as FindOptionsWhere<AssetMatchEntity>,
+    });
   }
 
   async findByMatchScore(minScore: number): Promise<AssetMatchEntity[]> {
-    return this.repository.createQueryBuilder('match').where('match.match_score >= :minScore', { minScore }).getMany();
+    return this.repository
+      .createQueryBuilder('match')
+      .where('match.match_score >= :minScore', { minScore })
+      .getMany();
   }
 
-  async updateDecision(id: string, decision: AssetMatchDecision): Promise<void> {
+  async updateDecision(
+    id: string,
+    decision: AssetMatchDecision,
+  ): Promise<void> {
     await this.repository.update(id, { decision });
   }
 
@@ -44,10 +69,14 @@ export class AssetMatchRepository {
   }
 
   async deleteByExtractedAssetId(extractedAssetId: string): Promise<void> {
-    await this.repository.delete({ extractedAssetId } as FindOptionsWhere<AssetMatchEntity>);
+    await this.repository.delete({
+      extractedAssetId,
+    });
   }
 
   async deleteByCanonicalAssetId(canonicalAssetId: string): Promise<void> {
-    await this.repository.delete({ canonicalAssetId } as FindOptionsWhere<AssetMatchEntity>);
+    await this.repository.delete({
+      canonicalAssetId,
+    });
   }
 }

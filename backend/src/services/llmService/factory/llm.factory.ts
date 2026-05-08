@@ -5,7 +5,10 @@ import { OpenAIProvider } from '../providers/openai.provider';
 import { AnthropicProvider } from '../providers/anthropic.provider';
 import { GoogleProvider } from '../providers/google.provider';
 import { OllamaProvider } from '../providers/ollama.provider';
-import { LLMConfig, LLMProvider as ProviderEnum } from '../../../core/config/llm.config';
+import {
+  LLMConfig,
+  LLMProvider as ProviderEnum,
+} from '../../../core/config/llm.config';
 
 @Injectable()
 export class LLMFactory {
@@ -13,7 +16,7 @@ export class LLMFactory {
 
   createProvider(): LLMProvider {
     const config = this.configService.get<LLMConfig>('llm');
-    
+
     if (!config) {
       throw new Error('LLM configuration not found');
     }

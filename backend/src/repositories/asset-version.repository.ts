@@ -16,22 +16,39 @@ export class AssetVersionRepository {
   }
 
   async findById(id: string): Promise<AssetVersionEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<AssetVersionEntity> });
-  }
-
-  async findByCanonicalAssetId(canonicalAssetId: string): Promise<AssetVersionEntity[]> {
-    return this.repository.find({ where: { canonicalAssetId } as FindOptionsWhere<AssetVersionEntity>, order: { versionNumber: 'DESC' } });
-  }
-
-  async findLatestVersion(canonicalAssetId: string): Promise<AssetVersionEntity | null> {
     return this.repository.findOne({
+      where: { id },
+    });
+  }
+
+  async findByCanonicalAssetId(
+    canonicalAssetId: string,
+  ): Promise<AssetVersionEntity[]> {
+    return this.repository.find({
       where: { canonicalAssetId } as FindOptionsWhere<AssetVersionEntity>,
       order: { versionNumber: 'DESC' },
     });
   }
 
-  async findByVersionNumber(canonicalAssetId: string, versionNumber: number): Promise<AssetVersionEntity | null> {
-    return this.repository.findOne({ where: { canonicalAssetId, versionNumber } as FindOptionsWhere<AssetVersionEntity> });
+  async findLatestVersion(
+    canonicalAssetId: string,
+  ): Promise<AssetVersionEntity | null> {
+    return this.repository.findOne({
+      where: { canonicalAssetId },
+      order: { versionNumber: 'DESC' },
+    });
+  }
+
+  async findByVersionNumber(
+    canonicalAssetId: string,
+    versionNumber: number,
+  ): Promise<AssetVersionEntity | null> {
+    return this.repository.findOne({
+      where: {
+        canonicalAssetId,
+        versionNumber,
+      },
+    });
   }
 
   async getNextVersionNumber(canonicalAssetId: string): Promise<number> {
@@ -44,6 +61,8 @@ export class AssetVersionRepository {
   }
 
   async deleteByCanonicalAssetId(canonicalAssetId: string): Promise<void> {
-    await this.repository.delete({ canonicalAssetId } as FindOptionsWhere<AssetVersionEntity>);
+    await this.repository.delete({
+      canonicalAssetId,
+    });
   }
 }

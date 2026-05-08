@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { LLMProvider } from '../interfaces/llm-provider.interface';
-import { LLMConfig } from '../../../core/config/llm.config';
+import type { LLMProvider } from '../interfaces/llm-provider.interface';
+import type { LLMConfig } from '../../../core/config/llm.config';
 
 @Injectable()
 export class AnthropicProvider implements LLMProvider {
@@ -8,7 +8,7 @@ export class AnthropicProvider implements LLMProvider {
   private model: string;
   private baseUrl: string;
 
-  constructor(private config: LLMConfig) {
+  constructor(config: LLMConfig) {
     this.apiKey = config.anthropic?.apiKey || '';
     this.model = config.model;
     this.baseUrl = 'https://api.anthropic.com/v1';
@@ -38,9 +38,11 @@ export class AnthropicProvider implements LLMProvider {
             content: prompt,
           },
         ],
-        ...(schema ? {
-          metadata: { schema: JSON.stringify(schema) },
-        } : {}),
+        ...(schema
+          ? {
+              metadata: { schema: JSON.stringify(schema) },
+            }
+          : {}),
       }),
     });
 
@@ -49,7 +51,7 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error(`Anthropic API error: ${error}`);
     }
 
-    const data = await response.json() as { content: { text: string }[] };
+    const data = (await response.json()) as { content: { text: string }[] };
     const text = data.content[0]?.text;
 
     if (!text) {

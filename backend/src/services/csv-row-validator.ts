@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { RawCsvRow, ParsedCsvRow, CsvRowError, CsvValidationResult } from '../utils/csv-stream.types';
+import {
+  RawCsvRow,
+  ParsedCsvRow,
+  CsvRowError,
+  CsvValidationResult,
+} from '../utils/csv-stream.types';
 
 @Injectable()
 export class CsvRowValidator {

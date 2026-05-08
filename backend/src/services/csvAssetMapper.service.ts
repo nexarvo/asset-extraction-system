@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ParsedCsvRow, ExtractedAssetCandidate, ExtractedFieldCandidate } from '../utils/csv-stream.types';
+import {
+  ParsedCsvRow,
+  ExtractedAssetCandidate,
+  ExtractedFieldCandidate,
+} from '../utils/csv-stream.types';
 
 @Injectable()
 export class CsvAssetMapperService {
@@ -58,7 +62,7 @@ export class CsvAssetMapperService {
       overallConfidence: this.calculateOverallConfidence(fields),
       rawRowData: parsedRow.data,
       normalizedRowData: Object.fromEntries(
-        fields.map(f => [f.fieldName, f.normalizedValue])
+        fields.map((f) => [f.fieldName, f.normalizedValue]),
       ),
     };
   }
@@ -114,11 +118,16 @@ export class CsvAssetMapperService {
     }
   }
 
-  private calculateOverallConfidence(fields: ExtractedFieldCandidate[]): number {
+  private calculateOverallConfidence(
+    fields: ExtractedFieldCandidate[],
+  ): number {
     const nonNullFields = fields.filter((f) => f.rawValue !== null);
     if (nonNullFields.length === 0) return 0;
 
-    const totalConfidence = nonNullFields.reduce((sum, f) => sum + (f.confidenceScore || 0), 0);
+    const totalConfidence = nonNullFields.reduce(
+      (sum, f) => sum + (f.confidenceScore || 0),
+      0,
+    );
     return totalConfidence / nonNullFields.length;
   }
 }

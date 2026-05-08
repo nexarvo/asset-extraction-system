@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { LLMProvider } from '../interfaces/llm-provider.interface';
-import { LLMConfig } from '../../../core/config/llm.config';
+import type { LLMProvider } from '../interfaces/llm-provider.interface';
+import type { LLMConfig } from '../../../core/config/llm.config';
 
 @Injectable()
 export class OpenAIProvider implements LLMProvider {
@@ -8,7 +8,7 @@ export class OpenAIProvider implements LLMProvider {
   private model: string;
   private baseUrl: string;
 
-  constructor(private config: LLMConfig) {
+  constructor(config: LLMConfig) {
     this.apiKey = config.openai?.apiKey || '';
     this.model = config.model;
     this.baseUrl = 'https://api.openai.com/v1';
@@ -46,7 +46,9 @@ export class OpenAIProvider implements LLMProvider {
       throw new Error(`OpenAI API error: ${error}`);
     }
 
-    const data = await response.json() as { choices: { message: { content: string } }[] };
+    const data = (await response.json()) as {
+      choices: { message: { content: string } }[];
+    };
     const content = data.choices[0]?.message?.content;
 
     if (!content) {

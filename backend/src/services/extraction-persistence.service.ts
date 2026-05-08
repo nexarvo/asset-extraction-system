@@ -1,8 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { ExtractedAssetCandidate, BatchPersistenceResult, CsvRowError } from '../utils/csv-stream.types';
-import { ExtractedAssetFieldRepository, BulkInsertFieldData } from '../repositories/extracted-asset-field.repository';
-import { ExtractionErrorRepository, BulkInsertErrorData } from '../repositories/extraction-error.repository';
-import { ExtractionMethod, ExtractedAssetReviewStatus } from '../entities/extracted-asset-field.entity';
+import {
+  ExtractedAssetCandidate,
+  BatchPersistenceResult,
+  CsvRowError,
+} from '../utils/csv-stream.types';
+import {
+  ExtractedAssetFieldRepository,
+  BulkInsertFieldData,
+} from '../repositories/extracted-asset-field.repository';
+import {
+  ExtractionErrorRepository,
+  BulkInsertErrorData,
+} from '../repositories/extraction-error.repository';
+import {
+  ExtractionMethod,
+  ExtractedAssetReviewStatus,
+} from '../entities/extracted-asset-field.entity';
 
 @Injectable()
 export class ExtractionPersistenceService {
@@ -26,7 +39,11 @@ export class ExtractionPersistenceService {
     const chunks = this.chunkArray(candidates, batchSize);
 
     for (const chunk of chunks) {
-      const result = await this.persistChunk(documentId, extractionJobId, chunk);
+      const result = await this.persistChunk(
+        documentId,
+        extractionJobId,
+        chunk,
+      );
       savedFields += result.savedFields;
       errors.push(...result.errors);
     }
@@ -45,10 +62,17 @@ export class ExtractionPersistenceService {
     let savedFields = 0;
 
     try {
-      const fieldsToInsert = this.transformCandidatesToInsertData(documentId, extractionJobId, candidates);
+      const fieldsToInsert = this.transformCandidatesToInsertData(
+        documentId,
+        extractionJobId,
+        candidates,
+      );
 
       if (fieldsToInsert.length > 0) {
-        savedFields = await this.extractedAssetFieldRepository.bulkInsertWithTransaction(fieldsToInsert);
+        savedFields =
+          await this.extractedAssetFieldRepository.bulkInsertWithTransaction(
+            fieldsToInsert,
+          );
       }
     } catch (error) {
       for (const candidate of candidates) {
@@ -72,10 +96,17 @@ export class ExtractionPersistenceService {
     let savedFields = 0;
 
     try {
-      const fieldsToInsert = this.transformCandidatesToInsertData(documentId, extractionJobId, candidates);
+      const fieldsToInsert = this.transformCandidatesToInsertData(
+        documentId,
+        extractionJobId,
+        candidates,
+      );
 
       if (fieldsToInsert.length > 0) {
-        savedFields = await this.extractedAssetFieldRepository.bulkInsertWithTransaction(fieldsToInsert);
+        savedFields =
+          await this.extractedAssetFieldRepository.bulkInsertWithTransaction(
+            fieldsToInsert,
+          );
       }
     } catch (error) {
       for (const candidate of candidates) {
@@ -107,8 +138,12 @@ export class ExtractionPersistenceService {
         continue;
       }
 
-      const assetName = candidate.rawAssetName || `asset_${candidate.sourceRowIndex || 0}`;
-      const sourceRow = typeof candidate.sourceRowIndex === 'number' ? candidate.sourceRowIndex : 0;
+      const assetName =
+        candidate.rawAssetName || `asset_${candidate.sourceRowIndex || 0}`;
+      const sourceRow =
+        typeof candidate.sourceRowIndex === 'number'
+          ? candidate.sourceRowIndex
+          : 0;
 
       fieldsToInsert.push({
         documentId: documentId,
@@ -118,8 +153,12 @@ export class ExtractionPersistenceService {
         reviewStatus: ExtractedAssetReviewStatus.PENDING,
         extractionStrategy: 'TABLE_EXTRACTION',
         fieldName: 'row_data',
-        rawValue: candidate.rawRowData ? JSON.stringify(candidate.rawRowData) : JSON.stringify(candidate.normalizedRowData),
-        normalizedValue: candidate.normalizedRowData ? JSON.stringify(candidate.normalizedRowData) : null,
+        rawValue: candidate.rawRowData
+          ? JSON.stringify(candidate.rawRowData)
+          : JSON.stringify(candidate.normalizedRowData),
+        normalizedValue: candidate.normalizedRowData
+          ? JSON.stringify(candidate.normalizedRowData)
+          : null,
         confidenceScore: candidate.overallConfidence ?? 0.8,
         extractionMethod: ExtractionMethod.TABLE_EXTRACTION,
         sourceRowIndex: sourceRow,
@@ -166,8 +205,12 @@ export class ExtractionPersistenceService {
     }
   }
 
-  async checkIdempotency(documentId: string, rowIndex: number): Promise<boolean> {
-    const fields = await this.extractedAssetFieldRepository.findByDocumentId(documentId);
+  async checkIdempotency(
+    documentId: string,
+    rowIndex: number,
+  ): Promise<boolean> {
+    const fields =
+      await this.extractedAssetFieldRepository.findByDocumentId(documentId);
     return fields.some((f) => f.sourceRowIndex === rowIndex);
   }
 

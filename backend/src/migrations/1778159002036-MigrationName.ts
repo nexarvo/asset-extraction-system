@@ -1,172 +1,455 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class MigrationName1778159002036 implements MigrationInterface {
-    name = 'MigrationName1778159002036'
+  name = 'MigrationName1778159002036';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP CONSTRAINT "FK_7cd4c79581390a1285de14cb443"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_7cd4c79581390a1285de14cb44"`);
-        await queryRunner.query(`CREATE TYPE "public"."validation_flags_severity_enum" AS ENUM('low', 'medium', 'high', 'critical')`);
-        await queryRunner.query(`CREATE TABLE "validation_flags" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "entity_type" character varying NOT NULL, "entity_id" uuid NOT NULL, "flag_type" character varying NOT NULL, "severity" "public"."validation_flags_severity_enum" NOT NULL, "explanation" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_9f3435c9018b9ee3b47ad4d4331" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_1fb21a776fdcddb689653719da" ON "validation_flags" ("entity_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."review_queue_status_enum" AS ENUM('pending', 'in_review', 'approved', 'rejected', 'resolved')`);
-        await queryRunner.query(`CREATE TABLE "review_queue" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "entity_type" character varying NOT NULL, "entity_id" uuid NOT NULL, "review_reason" character varying, "priority" integer NOT NULL DEFAULT '0', "assigned_to" uuid, "status" "public"."review_queue_status_enum" NOT NULL DEFAULT 'pending', "resolution_notes" text, "resolved_by" uuid, "resolved_at" TIMESTAMP, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_cd52d93cd97342f37527cfdd802" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_ecd30f8e62f9e980432adc3fb4" ON "review_queue" ("entity_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_4ac96be7d755df885f8f37babf" ON "review_queue" ("status") `);
-        await queryRunner.query(`CREATE TABLE "document_pages" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid NOT NULL, "page_number" integer NOT NULL, "has_text_layer" boolean NOT NULL DEFAULT false, "ocr_required" boolean NOT NULL DEFAULT false, "detected_layout" jsonb, "page_classification" character varying, "confidence_score" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_ea1fc914b2cf104d0f19050e801" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_a417941c7fa102ca2b3ebd937c" ON "document_pages" ("document_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."extracted_asset_fields_extractionmethod_enum" AS ENUM('OCR', 'TABLE_EXTRACTION', 'LLM_EXTRACTION', 'GEOCODING', 'HEURISTIC', 'HUMAN_REVIEW')`);
-        await queryRunner.query(`CREATE TYPE "public"."extracted_asset_fields_validationstatus_enum" AS ENUM('valid', 'suspicious', 'invalid', 'unverifiable')`);
-        await queryRunner.query(`CREATE TABLE "extracted_asset_fields" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "extracted_asset_id" uuid NOT NULL, "field_name" character varying NOT NULL, "normalized_value" jsonb, "raw_value" text, "value_type" character varying, "confidence_score" numeric(5,2), "extractionMethod" "public"."extracted_asset_fields_extractionmethod_enum", "is_inferred" boolean NOT NULL DEFAULT false, "inference_explanation" text, "evidence_text" text, "source_page_number" integer, "source_bbox" jsonb, "validationStatus" "public"."extracted_asset_fields_validationstatus_enum", "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_0ea8e273c75e1b8953d9c54de4e" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_ef0df803f8efc187e5cbbeca41" ON "extracted_asset_fields" ("extracted_asset_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_7efc17250e9e1ddccbb68532b5" ON "extracted_asset_fields" ("field_name") `);
-        await queryRunner.query(`CREATE INDEX "IDX_12d5ff75ca54703dc044892f3f" ON "extracted_asset_fields" ("confidence_score") `);
-        await queryRunner.query(`CREATE TYPE "public"."extracted_assets_reviewstatus_enum" AS ENUM('pending', 'auto_approved', 'requires_review', 'rejected')`);
-        await queryRunner.query(`CREATE TABLE "extracted_assets" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid NOT NULL, "extraction_job_id" uuid, "source_page_id" uuid, "extraction_strategy" character varying, "extraction_model" character varying, "raw_asset_name" text, "raw_payload" jsonb, "overall_confidence" numeric(5,2), "reviewStatus" "public"."extracted_assets_reviewstatus_enum" NOT NULL DEFAULT 'pending', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_054ea4907321cb5376010a9019e" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_27e03beabf1e503918eb8e196e" ON "extracted_assets" ("document_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_704173a151f6c561e2192f4c01" ON "extracted_assets" ("reviewStatus") `);
-        await queryRunner.query(`CREATE TYPE "public"."documents_ingestionstatus_enum" AS ENUM('uploaded', 'processing', 'completed', 'failed')`);
-        await queryRunner.query(`CREATE TABLE "documents" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "original_file_name" character varying NOT NULL, "storage_key" character varying NOT NULL, "mimeType" character varying, "file_size" bigint, "checksum_sha256" character varying, "uploaded_by" uuid, "upload_source" character varying, "ingestionStatus" "public"."documents_ingestionstatus_enum" NOT NULL DEFAULT 'uploaded', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_ac51aa5181ee2036f5ca482857c" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_78642a8dafb30e072e0121413e" ON "documents" ("checksum_sha256") `);
-        await queryRunner.query(`CREATE INDEX "IDX_16e00776f4accae20c5912044d" ON "documents" ("ingestionStatus") `);
-        await queryRunner.query(`CREATE TYPE "public"."processing_jobs_jobtype_enum" AS ENUM('OCR', 'DOCUMENT_UNDERSTANDING', 'EXTRACTION', 'RECONCILIATION', 'VALIDATION', 'GEOCODING', 'CONFIDENCE_SCORING')`);
-        await queryRunner.query(`CREATE TYPE "public"."processing_jobs_status_enum" AS ENUM('queued', 'running', 'completed', 'failed', 'retrying')`);
-        await queryRunner.query(`CREATE TABLE "processing_jobs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid, "jobType" "public"."processing_jobs_jobtype_enum" NOT NULL, "status" "public"."processing_jobs_status_enum" NOT NULL DEFAULT 'queued', "attempt_count" integer NOT NULL DEFAULT '0', "started_at" TIMESTAMP, "completed_at" TIMESTAMP, "error_summary" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_fd8dafc69f177c1f23505072188" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_8bc40b749f035a74bde1b7409a" ON "processing_jobs" ("document_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_f74f08f95800f85a50a440180b" ON "processing_jobs" ("status") `);
-        await queryRunner.query(`CREATE TYPE "public"."duplicate_clusters_clusterstatus_enum" AS ENUM('pending', 'confirmed', 'rejected')`);
-        await queryRunner.query(`CREATE TABLE "duplicate_clusters" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "clusterStatus" "public"."duplicate_clusters_clusterstatus_enum" NOT NULL DEFAULT 'pending', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_2931023098e207bab4dbf6cd633" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE TABLE "asset_versions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "version_number" integer NOT NULL, "snapshot_data" jsonb NOT NULL, "created_by_process" character varying, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_cdcef38a89b511b45285ae2b434" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_83193929d35caf2f910e47848d" ON "asset_versions" ("canonical_asset_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."canonical_assets_reviewstatus_enum" AS ENUM('pending', 'approved', 'rejected')`);
-        await queryRunner.query(`CREATE TABLE "canonical_assets" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_name" character varying NOT NULL, "asset_type" character varying, "jurisdiction" character varying, "latitude" numeric(10,7), "longitude" numeric(10,7), "canonical_value" numeric(20,2), "overall_confidence" numeric(5,2), "reviewStatus" "public"."canonical_assets_reviewstatus_enum" NOT NULL DEFAULT 'pending', "duplicate_cluster_id" uuid, "active_version_id" uuid, "created_at" TIMESTAMP NOT NULL DEFAULT now(), "updated_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_da7ffb9f00b459a920dd4bde1da" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_8b70c061adfec1be6a36963511" ON "canonical_assets" ("canonical_name") `);
-        await queryRunner.query(`CREATE INDEX "IDX_6e175551672414c6de67017582" ON "canonical_assets" ("asset_type") `);
-        await queryRunner.query(`CREATE INDEX "IDX_4c73a69758286bc533af0945bf" ON "canonical_assets" ("jurisdiction") `);
-        await queryRunner.query(`CREATE TABLE "canonical_asset_fields" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "field_name" character varying NOT NULL, "resolved_value" jsonb, "selected_evidence_id" uuid, "resolution_strategy" character varying, "confidence_score" numeric(5,2), "explanation" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b9c0cba57035af0e169351eca9b" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_65b13aadbb0d76492b888cf1d9" ON "canonical_asset_fields" ("canonical_asset_id") `);
-        await queryRunner.query(`CREATE TABLE "field_evidence" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_field_id" uuid NOT NULL, "extracted_field_id" uuid NOT NULL, "evidence_weight" numeric(5,2), "evidence_role" character varying NOT NULL, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c50a40661029c46e7a4a3b6fd95" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_67fd8493c31262808651e3c17c" ON "field_evidence" ("canonical_field_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_2e34a25393d816a59bf42c11e3" ON "field_evidence" ("extracted_field_id") `);
-        await queryRunner.query(`CREATE TABLE "asset_relationships" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "parent_asset_id" uuid NOT NULL, "child_asset_id" uuid NOT NULL, "relationship_type" character varying, "confidence_score" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_508d9fde7633dc9248bd7618aa7" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_48d244858bfdb8b3e110d3066d" ON "asset_relationships" ("parent_asset_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_3ceb6f82dca2b159a33502df8d" ON "asset_relationships" ("child_asset_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."asset_matches_decision_enum" AS ENUM('matched', 'merged', 'distinct', 'ambiguous')`);
-        await queryRunner.query(`CREATE TABLE "asset_matches" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "extracted_asset_id" uuid NOT NULL, "canonical_asset_id" uuid NOT NULL, "match_score" numeric(5,2), "match_strategy" character varying, "match_explanation" text, "decision" "public"."asset_matches_decision_enum" NOT NULL, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_821b340408934aa5f4917240213" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_e531195296870341aaf074b2e2" ON "asset_matches" ("match_score") `);
-        await queryRunner.query(`CREATE TABLE "asset_change_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "previous_version_id" uuid, "new_version_id" uuid, "field_name" character varying NOT NULL, "old_value" jsonb, "new_value" jsonb, "change_reason" text, "confidence_delta" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_3d2309ab0027fdc4422acebf7d8" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_58588b8fb584a1e369bfb79bee" ON "asset_change_events" ("canonical_asset_id") `);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "job_id"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "processing_job_id" uuid`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "error_stage" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "recoverable" boolean NOT NULL DEFAULT false`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "message"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "message" text NOT NULL`);
-        await queryRunner.query(`CREATE INDEX "IDX_dbbfa72263001095189516adcc" ON "extraction_errors" ("processing_job_id") `);
-        await queryRunner.query(`ALTER TABLE "document_pages" ADD CONSTRAINT "FK_a417941c7fa102ca2b3ebd937c2" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "extracted_asset_fields" ADD CONSTRAINT "FK_ef0df803f8efc187e5cbbeca412" FOREIGN KEY ("extracted_asset_id") REFERENCES "extracted_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_27e03beabf1e503918eb8e196ed" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_a45b83648f70c98aadfa99d4ce3" FOREIGN KEY ("extraction_job_id") REFERENCES "processing_jobs"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_a5514ac6ba96b7cae01e5776167" FOREIGN KEY ("source_page_id") REFERENCES "document_pages"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "processing_jobs" ADD CONSTRAINT "FK_8bc40b749f035a74bde1b7409a0" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_versions" ADD CONSTRAINT "FK_83193929d35caf2f910e47848dc" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "canonical_assets" ADD CONSTRAINT "FK_42cd1eb707cbacbb37d2e06151c" FOREIGN KEY ("duplicate_cluster_id") REFERENCES "duplicate_clusters"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "canonical_assets" ADD CONSTRAINT "FK_432f92c0706af04d96cb4bbc75f" FOREIGN KEY ("active_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "canonical_asset_fields" ADD CONSTRAINT "FK_65b13aadbb0d76492b888cf1d98" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "canonical_asset_fields" ADD CONSTRAINT "FK_f1318b599edc1588a7d8a034910" FOREIGN KEY ("selected_evidence_id") REFERENCES "extracted_asset_fields"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "field_evidence" ADD CONSTRAINT "FK_67fd8493c31262808651e3c17c3" FOREIGN KEY ("canonical_field_id") REFERENCES "canonical_asset_fields"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "field_evidence" ADD CONSTRAINT "FK_2e34a25393d816a59bf42c11e3f" FOREIGN KEY ("extracted_field_id") REFERENCES "extracted_asset_fields"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD CONSTRAINT "FK_dbbfa72263001095189516adcc2" FOREIGN KEY ("processing_job_id") REFERENCES "processing_jobs"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_relationships" ADD CONSTRAINT "FK_48d244858bfdb8b3e110d3066d3" FOREIGN KEY ("parent_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_relationships" ADD CONSTRAINT "FK_3ceb6f82dca2b159a33502df8d3" FOREIGN KEY ("child_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_matches" ADD CONSTRAINT "FK_e74891f2c00d86d4e48b41e1a66" FOREIGN KEY ("extracted_asset_id") REFERENCES "extracted_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_matches" ADD CONSTRAINT "FK_a45740720496891c01bacb59213" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_58588b8fb584a1e369bfb79bee3" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_02e17ceccd8f7efc65c3e897929" FOREIGN KEY ("previous_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_f67cfcc9383d9b1de33aeb346bf" FOREIGN KEY ("new_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-    }
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP CONSTRAINT "FK_7cd4c79581390a1285de14cb443"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_7cd4c79581390a1285de14cb44"`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."validation_flags_severity_enum" AS ENUM('low', 'medium', 'high', 'critical')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "validation_flags" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "entity_type" character varying NOT NULL, "entity_id" uuid NOT NULL, "flag_type" character varying NOT NULL, "severity" "public"."validation_flags_severity_enum" NOT NULL, "explanation" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_9f3435c9018b9ee3b47ad4d4331" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_1fb21a776fdcddb689653719da" ON "validation_flags" ("entity_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."review_queue_status_enum" AS ENUM('pending', 'in_review', 'approved', 'rejected', 'resolved')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "review_queue" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "entity_type" character varying NOT NULL, "entity_id" uuid NOT NULL, "review_reason" character varying, "priority" integer NOT NULL DEFAULT '0', "assigned_to" uuid, "status" "public"."review_queue_status_enum" NOT NULL DEFAULT 'pending', "resolution_notes" text, "resolved_by" uuid, "resolved_at" TIMESTAMP, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_cd52d93cd97342f37527cfdd802" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ecd30f8e62f9e980432adc3fb4" ON "review_queue" ("entity_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_4ac96be7d755df885f8f37babf" ON "review_queue" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "document_pages" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid NOT NULL, "page_number" integer NOT NULL, "has_text_layer" boolean NOT NULL DEFAULT false, "ocr_required" boolean NOT NULL DEFAULT false, "detected_layout" jsonb, "page_classification" character varying, "confidence_score" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_ea1fc914b2cf104d0f19050e801" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_a417941c7fa102ca2b3ebd937c" ON "document_pages" ("document_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."extracted_asset_fields_extractionmethod_enum" AS ENUM('OCR', 'TABLE_EXTRACTION', 'LLM_EXTRACTION', 'GEOCODING', 'HEURISTIC', 'HUMAN_REVIEW')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."extracted_asset_fields_validationstatus_enum" AS ENUM('valid', 'suspicious', 'invalid', 'unverifiable')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "extracted_asset_fields" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "extracted_asset_id" uuid NOT NULL, "field_name" character varying NOT NULL, "normalized_value" jsonb, "raw_value" text, "value_type" character varying, "confidence_score" numeric(5,2), "extractionMethod" "public"."extracted_asset_fields_extractionmethod_enum", "is_inferred" boolean NOT NULL DEFAULT false, "inference_explanation" text, "evidence_text" text, "source_page_number" integer, "source_bbox" jsonb, "validationStatus" "public"."extracted_asset_fields_validationstatus_enum", "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_0ea8e273c75e1b8953d9c54de4e" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ef0df803f8efc187e5cbbeca41" ON "extracted_asset_fields" ("extracted_asset_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_7efc17250e9e1ddccbb68532b5" ON "extracted_asset_fields" ("field_name") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_12d5ff75ca54703dc044892f3f" ON "extracted_asset_fields" ("confidence_score") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."extracted_assets_reviewstatus_enum" AS ENUM('pending', 'auto_approved', 'requires_review', 'rejected')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "extracted_assets" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid NOT NULL, "extraction_job_id" uuid, "source_page_id" uuid, "extraction_strategy" character varying, "extraction_model" character varying, "raw_asset_name" text, "raw_payload" jsonb, "overall_confidence" numeric(5,2), "reviewStatus" "public"."extracted_assets_reviewstatus_enum" NOT NULL DEFAULT 'pending', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_054ea4907321cb5376010a9019e" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_27e03beabf1e503918eb8e196e" ON "extracted_assets" ("document_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_704173a151f6c561e2192f4c01" ON "extracted_assets" ("reviewStatus") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."documents_ingestionstatus_enum" AS ENUM('uploaded', 'processing', 'completed', 'failed')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "documents" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "original_file_name" character varying NOT NULL, "storage_key" character varying NOT NULL, "mimeType" character varying, "file_size" bigint, "checksum_sha256" character varying, "uploaded_by" uuid, "upload_source" character varying, "ingestionStatus" "public"."documents_ingestionstatus_enum" NOT NULL DEFAULT 'uploaded', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_ac51aa5181ee2036f5ca482857c" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_78642a8dafb30e072e0121413e" ON "documents" ("checksum_sha256") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_16e00776f4accae20c5912044d" ON "documents" ("ingestionStatus") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."processing_jobs_jobtype_enum" AS ENUM('OCR', 'DOCUMENT_UNDERSTANDING', 'EXTRACTION', 'RECONCILIATION', 'VALIDATION', 'GEOCODING', 'CONFIDENCE_SCORING')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."processing_jobs_status_enum" AS ENUM('queued', 'running', 'completed', 'failed', 'retrying')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "processing_jobs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "document_id" uuid, "jobType" "public"."processing_jobs_jobtype_enum" NOT NULL, "status" "public"."processing_jobs_status_enum" NOT NULL DEFAULT 'queued', "attempt_count" integer NOT NULL DEFAULT '0', "started_at" TIMESTAMP, "completed_at" TIMESTAMP, "error_summary" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_fd8dafc69f177c1f23505072188" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_8bc40b749f035a74bde1b7409a" ON "processing_jobs" ("document_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_f74f08f95800f85a50a440180b" ON "processing_jobs" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."duplicate_clusters_clusterstatus_enum" AS ENUM('pending', 'confirmed', 'rejected')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "duplicate_clusters" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "clusterStatus" "public"."duplicate_clusters_clusterstatus_enum" NOT NULL DEFAULT 'pending', "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_2931023098e207bab4dbf6cd633" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "asset_versions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "version_number" integer NOT NULL, "snapshot_data" jsonb NOT NULL, "created_by_process" character varying, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_cdcef38a89b511b45285ae2b434" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_83193929d35caf2f910e47848d" ON "asset_versions" ("canonical_asset_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."canonical_assets_reviewstatus_enum" AS ENUM('pending', 'approved', 'rejected')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "canonical_assets" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_name" character varying NOT NULL, "asset_type" character varying, "jurisdiction" character varying, "latitude" numeric(10,7), "longitude" numeric(10,7), "canonical_value" numeric(20,2), "overall_confidence" numeric(5,2), "reviewStatus" "public"."canonical_assets_reviewstatus_enum" NOT NULL DEFAULT 'pending', "duplicate_cluster_id" uuid, "active_version_id" uuid, "created_at" TIMESTAMP NOT NULL DEFAULT now(), "updated_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_da7ffb9f00b459a920dd4bde1da" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_8b70c061adfec1be6a36963511" ON "canonical_assets" ("canonical_name") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_6e175551672414c6de67017582" ON "canonical_assets" ("asset_type") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_4c73a69758286bc533af0945bf" ON "canonical_assets" ("jurisdiction") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "canonical_asset_fields" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "field_name" character varying NOT NULL, "resolved_value" jsonb, "selected_evidence_id" uuid, "resolution_strategy" character varying, "confidence_score" numeric(5,2), "explanation" text, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b9c0cba57035af0e169351eca9b" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_65b13aadbb0d76492b888cf1d9" ON "canonical_asset_fields" ("canonical_asset_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "field_evidence" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_field_id" uuid NOT NULL, "extracted_field_id" uuid NOT NULL, "evidence_weight" numeric(5,2), "evidence_role" character varying NOT NULL, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c50a40661029c46e7a4a3b6fd95" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_67fd8493c31262808651e3c17c" ON "field_evidence" ("canonical_field_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_2e34a25393d816a59bf42c11e3" ON "field_evidence" ("extracted_field_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "asset_relationships" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "parent_asset_id" uuid NOT NULL, "child_asset_id" uuid NOT NULL, "relationship_type" character varying, "confidence_score" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_508d9fde7633dc9248bd7618aa7" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_48d244858bfdb8b3e110d3066d" ON "asset_relationships" ("parent_asset_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_3ceb6f82dca2b159a33502df8d" ON "asset_relationships" ("child_asset_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."asset_matches_decision_enum" AS ENUM('matched', 'merged', 'distinct', 'ambiguous')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "asset_matches" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "extracted_asset_id" uuid NOT NULL, "canonical_asset_id" uuid NOT NULL, "match_score" numeric(5,2), "match_strategy" character varying, "match_explanation" text, "decision" "public"."asset_matches_decision_enum" NOT NULL, "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_821b340408934aa5f4917240213" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_e531195296870341aaf074b2e2" ON "asset_matches" ("match_score") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "asset_change_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "canonical_asset_id" uuid NOT NULL, "previous_version_id" uuid, "new_version_id" uuid, "field_name" character varying NOT NULL, "old_value" jsonb, "new_value" jsonb, "change_reason" text, "confidence_delta" numeric(5,2), "created_at" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_3d2309ab0027fdc4422acebf7d8" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_58588b8fb584a1e369bfb79bee" ON "asset_change_events" ("canonical_asset_id") `,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "job_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "processing_job_id" uuid`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "error_stage" character varying NOT NULL`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "recoverable" boolean NOT NULL DEFAULT false`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "message"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "message" text NOT NULL`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_dbbfa72263001095189516adcc" ON "extraction_errors" ("processing_job_id") `,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "document_pages" ADD CONSTRAINT "FK_a417941c7fa102ca2b3ebd937c2" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_asset_fields" ADD CONSTRAINT "FK_ef0df803f8efc187e5cbbeca412" FOREIGN KEY ("extracted_asset_id") REFERENCES "extracted_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_27e03beabf1e503918eb8e196ed" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_a45b83648f70c98aadfa99d4ce3" FOREIGN KEY ("extraction_job_id") REFERENCES "processing_jobs"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" ADD CONSTRAINT "FK_a5514ac6ba96b7cae01e5776167" FOREIGN KEY ("source_page_id") REFERENCES "document_pages"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "processing_jobs" ADD CONSTRAINT "FK_8bc40b749f035a74bde1b7409a0" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_versions" ADD CONSTRAINT "FK_83193929d35caf2f910e47848dc" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_assets" ADD CONSTRAINT "FK_42cd1eb707cbacbb37d2e06151c" FOREIGN KEY ("duplicate_cluster_id") REFERENCES "duplicate_clusters"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_assets" ADD CONSTRAINT "FK_432f92c0706af04d96cb4bbc75f" FOREIGN KEY ("active_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_asset_fields" ADD CONSTRAINT "FK_65b13aadbb0d76492b888cf1d98" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_asset_fields" ADD CONSTRAINT "FK_f1318b599edc1588a7d8a034910" FOREIGN KEY ("selected_evidence_id") REFERENCES "extracted_asset_fields"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "field_evidence" ADD CONSTRAINT "FK_67fd8493c31262808651e3c17c3" FOREIGN KEY ("canonical_field_id") REFERENCES "canonical_asset_fields"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "field_evidence" ADD CONSTRAINT "FK_2e34a25393d816a59bf42c11e3f" FOREIGN KEY ("extracted_field_id") REFERENCES "extracted_asset_fields"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD CONSTRAINT "FK_dbbfa72263001095189516adcc2" FOREIGN KEY ("processing_job_id") REFERENCES "processing_jobs"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_relationships" ADD CONSTRAINT "FK_48d244858bfdb8b3e110d3066d3" FOREIGN KEY ("parent_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_relationships" ADD CONSTRAINT "FK_3ceb6f82dca2b159a33502df8d3" FOREIGN KEY ("child_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_matches" ADD CONSTRAINT "FK_e74891f2c00d86d4e48b41e1a66" FOREIGN KEY ("extracted_asset_id") REFERENCES "extracted_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_matches" ADD CONSTRAINT "FK_a45740720496891c01bacb59213" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_58588b8fb584a1e369bfb79bee3" FOREIGN KEY ("canonical_asset_id") REFERENCES "canonical_assets"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_02e17ceccd8f7efc65c3e897929" FOREIGN KEY ("previous_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" ADD CONSTRAINT "FK_f67cfcc9383d9b1de33aeb346bf" FOREIGN KEY ("new_version_id") REFERENCES "asset_versions"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
+    );
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_f67cfcc9383d9b1de33aeb346bf"`);
-        await queryRunner.query(`ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_02e17ceccd8f7efc65c3e897929"`);
-        await queryRunner.query(`ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_58588b8fb584a1e369bfb79bee3"`);
-        await queryRunner.query(`ALTER TABLE "asset_matches" DROP CONSTRAINT "FK_a45740720496891c01bacb59213"`);
-        await queryRunner.query(`ALTER TABLE "asset_matches" DROP CONSTRAINT "FK_e74891f2c00d86d4e48b41e1a66"`);
-        await queryRunner.query(`ALTER TABLE "asset_relationships" DROP CONSTRAINT "FK_3ceb6f82dca2b159a33502df8d3"`);
-        await queryRunner.query(`ALTER TABLE "asset_relationships" DROP CONSTRAINT "FK_48d244858bfdb8b3e110d3066d3"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP CONSTRAINT "FK_dbbfa72263001095189516adcc2"`);
-        await queryRunner.query(`ALTER TABLE "field_evidence" DROP CONSTRAINT "FK_2e34a25393d816a59bf42c11e3f"`);
-        await queryRunner.query(`ALTER TABLE "field_evidence" DROP CONSTRAINT "FK_67fd8493c31262808651e3c17c3"`);
-        await queryRunner.query(`ALTER TABLE "canonical_asset_fields" DROP CONSTRAINT "FK_f1318b599edc1588a7d8a034910"`);
-        await queryRunner.query(`ALTER TABLE "canonical_asset_fields" DROP CONSTRAINT "FK_65b13aadbb0d76492b888cf1d98"`);
-        await queryRunner.query(`ALTER TABLE "canonical_assets" DROP CONSTRAINT "FK_432f92c0706af04d96cb4bbc75f"`);
-        await queryRunner.query(`ALTER TABLE "canonical_assets" DROP CONSTRAINT "FK_42cd1eb707cbacbb37d2e06151c"`);
-        await queryRunner.query(`ALTER TABLE "asset_versions" DROP CONSTRAINT "FK_83193929d35caf2f910e47848dc"`);
-        await queryRunner.query(`ALTER TABLE "processing_jobs" DROP CONSTRAINT "FK_8bc40b749f035a74bde1b7409a0"`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_a5514ac6ba96b7cae01e5776167"`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_a45b83648f70c98aadfa99d4ce3"`);
-        await queryRunner.query(`ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_27e03beabf1e503918eb8e196ed"`);
-        await queryRunner.query(`ALTER TABLE "extracted_asset_fields" DROP CONSTRAINT "FK_ef0df803f8efc187e5cbbeca412"`);
-        await queryRunner.query(`ALTER TABLE "document_pages" DROP CONSTRAINT "FK_a417941c7fa102ca2b3ebd937c2"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_dbbfa72263001095189516adcc"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "message"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "message" character varying NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "recoverable"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "error_stage"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" DROP COLUMN "processing_job_id"`);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD "job_id" uuid NOT NULL`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_58588b8fb584a1e369bfb79bee"`);
-        await queryRunner.query(`DROP TABLE "asset_change_events"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e531195296870341aaf074b2e2"`);
-        await queryRunner.query(`DROP TABLE "asset_matches"`);
-        await queryRunner.query(`DROP TYPE "public"."asset_matches_decision_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_3ceb6f82dca2b159a33502df8d"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_48d244858bfdb8b3e110d3066d"`);
-        await queryRunner.query(`DROP TABLE "asset_relationships"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_2e34a25393d816a59bf42c11e3"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_67fd8493c31262808651e3c17c"`);
-        await queryRunner.query(`DROP TABLE "field_evidence"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_65b13aadbb0d76492b888cf1d9"`);
-        await queryRunner.query(`DROP TABLE "canonical_asset_fields"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_4c73a69758286bc533af0945bf"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_6e175551672414c6de67017582"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_8b70c061adfec1be6a36963511"`);
-        await queryRunner.query(`DROP TABLE "canonical_assets"`);
-        await queryRunner.query(`DROP TYPE "public"."canonical_assets_reviewstatus_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_83193929d35caf2f910e47848d"`);
-        await queryRunner.query(`DROP TABLE "asset_versions"`);
-        await queryRunner.query(`DROP TABLE "duplicate_clusters"`);
-        await queryRunner.query(`DROP TYPE "public"."duplicate_clusters_clusterstatus_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_f74f08f95800f85a50a440180b"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_8bc40b749f035a74bde1b7409a"`);
-        await queryRunner.query(`DROP TABLE "processing_jobs"`);
-        await queryRunner.query(`DROP TYPE "public"."processing_jobs_status_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."processing_jobs_jobtype_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_16e00776f4accae20c5912044d"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_78642a8dafb30e072e0121413e"`);
-        await queryRunner.query(`DROP TABLE "documents"`);
-        await queryRunner.query(`DROP TYPE "public"."documents_ingestionstatus_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_704173a151f6c561e2192f4c01"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_27e03beabf1e503918eb8e196e"`);
-        await queryRunner.query(`DROP TABLE "extracted_assets"`);
-        await queryRunner.query(`DROP TYPE "public"."extracted_assets_reviewstatus_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_12d5ff75ca54703dc044892f3f"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_7efc17250e9e1ddccbb68532b5"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_ef0df803f8efc187e5cbbeca41"`);
-        await queryRunner.query(`DROP TABLE "extracted_asset_fields"`);
-        await queryRunner.query(`DROP TYPE "public"."extracted_asset_fields_validationstatus_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."extracted_asset_fields_extractionmethod_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_a417941c7fa102ca2b3ebd937c"`);
-        await queryRunner.query(`DROP TABLE "document_pages"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_4ac96be7d755df885f8f37babf"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_ecd30f8e62f9e980432adc3fb4"`);
-        await queryRunner.query(`DROP TABLE "review_queue"`);
-        await queryRunner.query(`DROP TYPE "public"."review_queue_status_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1fb21a776fdcddb689653719da"`);
-        await queryRunner.query(`DROP TABLE "validation_flags"`);
-        await queryRunner.query(`DROP TYPE "public"."validation_flags_severity_enum"`);
-        await queryRunner.query(`CREATE INDEX "IDX_7cd4c79581390a1285de14cb44" ON "extraction_errors" ("job_id") `);
-        await queryRunner.query(`ALTER TABLE "extraction_errors" ADD CONSTRAINT "FK_7cd4c79581390a1285de14cb443" FOREIGN KEY ("job_id") REFERENCES "extraction_jobs"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-    }
-
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_f67cfcc9383d9b1de33aeb346bf"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_02e17ceccd8f7efc65c3e897929"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_change_events" DROP CONSTRAINT "FK_58588b8fb584a1e369bfb79bee3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_matches" DROP CONSTRAINT "FK_a45740720496891c01bacb59213"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_matches" DROP CONSTRAINT "FK_e74891f2c00d86d4e48b41e1a66"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_relationships" DROP CONSTRAINT "FK_3ceb6f82dca2b159a33502df8d3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_relationships" DROP CONSTRAINT "FK_48d244858bfdb8b3e110d3066d3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP CONSTRAINT "FK_dbbfa72263001095189516adcc2"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "field_evidence" DROP CONSTRAINT "FK_2e34a25393d816a59bf42c11e3f"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "field_evidence" DROP CONSTRAINT "FK_67fd8493c31262808651e3c17c3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_asset_fields" DROP CONSTRAINT "FK_f1318b599edc1588a7d8a034910"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_asset_fields" DROP CONSTRAINT "FK_65b13aadbb0d76492b888cf1d98"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_assets" DROP CONSTRAINT "FK_432f92c0706af04d96cb4bbc75f"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "canonical_assets" DROP CONSTRAINT "FK_42cd1eb707cbacbb37d2e06151c"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "asset_versions" DROP CONSTRAINT "FK_83193929d35caf2f910e47848dc"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "processing_jobs" DROP CONSTRAINT "FK_8bc40b749f035a74bde1b7409a0"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_a5514ac6ba96b7cae01e5776167"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_a45b83648f70c98aadfa99d4ce3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_assets" DROP CONSTRAINT "FK_27e03beabf1e503918eb8e196ed"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extracted_asset_fields" DROP CONSTRAINT "FK_ef0df803f8efc187e5cbbeca412"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "document_pages" DROP CONSTRAINT "FK_a417941c7fa102ca2b3ebd937c2"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_dbbfa72263001095189516adcc"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "message"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "message" character varying NOT NULL`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "recoverable"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "error_stage"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" DROP COLUMN "processing_job_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD "job_id" uuid NOT NULL`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_58588b8fb584a1e369bfb79bee"`,
+    );
+    await queryRunner.query(`DROP TABLE "asset_change_events"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e531195296870341aaf074b2e2"`,
+    );
+    await queryRunner.query(`DROP TABLE "asset_matches"`);
+    await queryRunner.query(`DROP TYPE "public"."asset_matches_decision_enum"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_3ceb6f82dca2b159a33502df8d"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_48d244858bfdb8b3e110d3066d"`,
+    );
+    await queryRunner.query(`DROP TABLE "asset_relationships"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_2e34a25393d816a59bf42c11e3"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_67fd8493c31262808651e3c17c"`,
+    );
+    await queryRunner.query(`DROP TABLE "field_evidence"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_65b13aadbb0d76492b888cf1d9"`,
+    );
+    await queryRunner.query(`DROP TABLE "canonical_asset_fields"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_4c73a69758286bc533af0945bf"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_6e175551672414c6de67017582"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_8b70c061adfec1be6a36963511"`,
+    );
+    await queryRunner.query(`DROP TABLE "canonical_assets"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."canonical_assets_reviewstatus_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_83193929d35caf2f910e47848d"`,
+    );
+    await queryRunner.query(`DROP TABLE "asset_versions"`);
+    await queryRunner.query(`DROP TABLE "duplicate_clusters"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."duplicate_clusters_clusterstatus_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_f74f08f95800f85a50a440180b"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_8bc40b749f035a74bde1b7409a"`,
+    );
+    await queryRunner.query(`DROP TABLE "processing_jobs"`);
+    await queryRunner.query(`DROP TYPE "public"."processing_jobs_status_enum"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."processing_jobs_jobtype_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_16e00776f4accae20c5912044d"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_78642a8dafb30e072e0121413e"`,
+    );
+    await queryRunner.query(`DROP TABLE "documents"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."documents_ingestionstatus_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_704173a151f6c561e2192f4c01"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_27e03beabf1e503918eb8e196e"`,
+    );
+    await queryRunner.query(`DROP TABLE "extracted_assets"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."extracted_assets_reviewstatus_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_12d5ff75ca54703dc044892f3f"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_7efc17250e9e1ddccbb68532b5"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_ef0df803f8efc187e5cbbeca41"`,
+    );
+    await queryRunner.query(`DROP TABLE "extracted_asset_fields"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."extracted_asset_fields_validationstatus_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE "public"."extracted_asset_fields_extractionmethod_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_a417941c7fa102ca2b3ebd937c"`,
+    );
+    await queryRunner.query(`DROP TABLE "document_pages"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_4ac96be7d755df885f8f37babf"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_ecd30f8e62f9e980432adc3fb4"`,
+    );
+    await queryRunner.query(`DROP TABLE "review_queue"`);
+    await queryRunner.query(`DROP TYPE "public"."review_queue_status_enum"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_1fb21a776fdcddb689653719da"`,
+    );
+    await queryRunner.query(`DROP TABLE "validation_flags"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."validation_flags_severity_enum"`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_7cd4c79581390a1285de14cb44" ON "extraction_errors" ("job_id") `,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "extraction_errors" ADD CONSTRAINT "FK_7cd4c79581390a1285de14cb443" FOREIGN KEY ("job_id") REFERENCES "extraction_jobs"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+  }
 }

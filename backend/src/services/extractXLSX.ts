@@ -44,7 +44,10 @@ export class XlsxExtractionService {
             ? SupportedFileType.Xls
             : SupportedFileType.Xlsx,
         records: result.candidates as unknown as Record<string, unknown>[],
-        metadata: createExtractionMetadata(result.candidates.length, result.warnings),
+        metadata: createExtractionMetadata(
+          result.candidates.length,
+          result.warnings,
+        ),
       };
     } catch (error) {
       if (error instanceof ApplicationError) {
@@ -73,11 +76,15 @@ export class XlsxExtractionService {
         warnings.push(...sheetResult.warnings);
       }
 
-      this.logger.log('spreadsheet extraction completed', 'XlsxExtractionService', {
-        filename,
-        recordCount: candidates.length,
-        skippedRows: warnings.length,
-      });
+      this.logger.log(
+        'spreadsheet extraction completed',
+        'XlsxExtractionService',
+        {
+          filename,
+          recordCount: candidates.length,
+          skippedRows: warnings.length,
+        },
+      );
 
       return { candidates, warnings };
     } catch (error) {
@@ -107,7 +114,7 @@ export class XlsxExtractionService {
 
     const range = XLSX.utils.decode_range(worksheet['!ref']);
     const totalRows = range.e.r - range.s.r + 1;
-    
+
     this.logger.log('sheet processing started', 'XlsxExtractionService', {
       filename,
       sheetName,
@@ -268,10 +275,14 @@ export class XlsxExtractionService {
         warnings.push(...result.warnings);
       }
 
-      this.logger.log('spreadsheet extraction with backpressure completed', 'XlsxExtractionService', {
-        filename,
-        totalProcessed,
-      });
+      this.logger.log(
+        'spreadsheet extraction with backpressure completed',
+        'XlsxExtractionService',
+        {
+          filename,
+          totalProcessed,
+        },
+      );
 
       return { totalProcessed, warnings };
     } catch (error) {
@@ -355,7 +366,9 @@ export class XlsxExtractionService {
         const validationResult = this.rowValidator.validateRow(rawRow);
         if (!validationResult.isValid) {
           validationResult.errors.forEach((error) => {
-            warnings.push(`sheet ${sheetName}, row ${error.rowIndex}: ${error.reason}`);
+            warnings.push(
+              `sheet ${sheetName}, row ${error.rowIndex}: ${error.reason}`,
+            );
           });
           continue;
         }
@@ -364,7 +377,9 @@ export class XlsxExtractionService {
         const candidate = this.xlsxAssetMapperService.mapRow(parsedRow);
         await onCandidate(candidate);
       } catch (error) {
-        warnings.push(`sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`);
+        warnings.push(
+          `sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -375,7 +390,10 @@ export class XlsxExtractionService {
     return XLSX.read(buffer, { type: 'buffer', cellDates: true });
   }
 
-  private valuesToRecord(headers: string[], values: (string | number | null)[]): Record<string, unknown> {
+  private valuesToRecord(
+    headers: string[],
+    values: (string | number | null)[],
+  ): Record<string, unknown> {
     const record: Record<string, unknown> = {};
     for (let i = 0; i < headers.length; i++) {
       record[headers[i]] = values[i] ?? null;
@@ -415,11 +433,30 @@ export class XlsxExtractionService {
     range: XLSX.Range,
     startRow: number,
     endRow: number,
-  ): { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number; stringCount: number; numericCount: number; dateCount: number }[] {
-    const rows: { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number; stringCount: number; numericCount: number; dateCount: number }[] = [];
+  ): {
+    rowNumber: number;
+    values: (string | number | null)[];
+    nonEmptyCount: number;
+    stringCount: number;
+    numericCount: number;
+    dateCount: number;
+  }[] {
+    const rows: {
+      rowNumber: number;
+      values: (string | number | null)[];
+      nonEmptyCount: number;
+      stringCount: number;
+      numericCount: number;
+      dateCount: number;
+    }[] = [];
 
     for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
-      const values = this.readRowValues(worksheet, rowNumber, range.s.c, range.e.c);
+      const values = this.readRowValues(
+        worksheet,
+        rowNumber,
+        range.s.c,
+        range.e.c,
+      );
       const nonEmpty = values.filter((v) => !this.isEmpty(v));
 
       rows.push({
@@ -435,7 +472,14 @@ export class XlsxExtractionService {
     return rows;
   }
 
-  private detectByHeaderDataTransition(rows: { rowNumber: number; nonEmptyCount: number; stringCount: number; numericCount: number }[]): number | null {
+  private detectByHeaderDataTransition(
+    rows: {
+      rowNumber: number;
+      nonEmptyCount: number;
+      stringCount: number;
+      numericCount: number;
+    }[],
+  ): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
     if (candidates.length < 2) return null;
 
@@ -466,11 +510,14 @@ export class XlsxExtractionService {
     return bestRow;
   }
 
-  private detectByStringDominance(rows: { rowNumber: number; nonEmptyCount: number; stringCount: number }[]): number | null {
+  private detectByStringDominance(
+    rows: { rowNumber: number; nonEmptyCount: number; stringCount: number }[],
+  ): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
     if (candidates.length === 0) return null;
 
-    const avgStrings = candidates.reduce((sum, r) => sum + r.stringCount, 0) / candidates.length;
+    const avgStrings =
+      candidates.reduce((sum, r) => sum + r.stringCount, 0) / candidates.length;
 
     const likelyHeader = candidates.find((r) => {
       const stringRatio = r.stringCount / r.nonEmptyCount;
@@ -483,12 +530,19 @@ export class XlsxExtractionService {
   private detectByColumnConsistency(
     worksheet: XLSX.WorkSheet,
     range: XLSX.Range,
-    rows: { rowNumber: number; values: (string | number | null)[]; nonEmptyCount: number }[],
+    rows: {
+      rowNumber: number;
+      values: (string | number | null)[];
+      nonEmptyCount: number;
+    }[],
   ): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
     if (candidates.length < 2) return null;
 
-    const columnTypes = new Map<number, { string: number; numeric: number; date: number }>();
+    const columnTypes = new Map<
+      number,
+      { string: number; numeric: number; date: number }
+    >();
 
     for (let col = range.s.c; col <= range.e.c; col++) {
       columnTypes.set(col, { string: 0, numeric: 0, date: 0 });
@@ -532,7 +586,8 @@ export class XlsxExtractionService {
         }
       }
 
-      const score = matchingColumns * 10 - (header.rowNumber - rows[0].rowNumber) * 2;
+      const score =
+        matchingColumns * 10 - (header.rowNumber - rows[0].rowNumber) * 2;
 
       if (score > bestScore) {
         bestScore = score;
@@ -543,12 +598,16 @@ export class XlsxExtractionService {
     return bestRow;
   }
 
-  private detectByFirstValidRow(rows: { rowNumber: number; nonEmptyCount: number }[]): number | null {
+  private detectByFirstValidRow(
+    rows: { rowNumber: number; nonEmptyCount: number }[],
+  ): number | null {
     const candidates = rows.filter((r) => r.nonEmptyCount >= 2);
     return candidates[0]?.rowNumber ?? null;
   }
 
-  private fallbackDetectHeader(rows: { rowNumber: number; nonEmptyCount: number }[]): number | null {
+  private fallbackDetectHeader(
+    rows: { rowNumber: number; nonEmptyCount: number }[],
+  ): number | null {
     const nonEmpty = rows.filter((r) => r.nonEmptyCount > 0);
     return nonEmpty[0]?.rowNumber ?? null;
   }
@@ -564,7 +623,11 @@ export class XlsxExtractionService {
     }
 
     const values: (string | number | null)[] = [];
-    for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
+    for (
+      let columnNumber = startColumn;
+      columnNumber <= endColumn;
+      columnNumber += 1
+    ) {
       const address = XLSX.utils.encode_cell({ r: rowNumber, c: columnNumber });
       const cell = worksheet[address];
       values.push(this.readCellValue(cell));
@@ -572,7 +635,9 @@ export class XlsxExtractionService {
     return values;
   }
 
-  private readCellValue(cell: XLSX.CellObject | undefined): string | number | null {
+  private readCellValue(
+    cell: XLSX.CellObject | undefined,
+  ): string | number | null {
     if (!cell || cell.v === undefined || cell.v === null) {
       return null;
     }
@@ -595,7 +660,10 @@ export class XlsxExtractionService {
   private findLastNonEmptyIndex(values: (string | number | null)[]): number {
     for (let index = values.length - 1; index >= 0; index -= 1) {
       const value = values[index];
-      if (value !== null && !(typeof value === 'string' && value.trim().length === 0)) {
+      if (
+        value !== null &&
+        !(typeof value === 'string' && value.trim().length === 0)
+      ) {
         return index;
       }
     }
@@ -609,7 +677,9 @@ export class XlsxExtractionService {
       return false;
     }
 
-    return typeof row.values[0] === 'string' && row.values[0].trim().length > 25;
+    return (
+      typeof row.values[0] === 'string' && row.values[0].trim().length > 25
+    );
   }
 
   private isEmpty(value: unknown): boolean {

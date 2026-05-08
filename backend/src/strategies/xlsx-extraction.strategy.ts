@@ -15,7 +15,8 @@ export class XlsxExtractionStrategy implements IExtractionStrategy {
     const input: AssetFileInput = {
       filename,
       buffer,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
 
     return this.xlsxExtractionService.extractDataFromXlsx(input);

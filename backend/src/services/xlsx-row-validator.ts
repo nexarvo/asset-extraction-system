@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { RawXlsxRow, ParsedXlsxRow, XlsxRowError, XlsxValidationResult } from '../utils/csv-stream.types';
+import {
+  RawXlsxRow,
+  ParsedXlsxRow,
+  XlsxRowError,
+  XlsxValidationResult,
+} from '../utils/csv-stream.types';
 
 @Injectable()
 export class XlsxRowValidator {
@@ -45,7 +50,9 @@ export class XlsxRowValidator {
       }
     }
 
-    const isEmpty = rawRow.values.every((v) => v === null || v === '' || v === undefined);
+    const isEmpty = rawRow.values.every(
+      (v) => v === null || v === '' || v === undefined,
+    );
     if (isEmpty) {
       errors.push({
         sheetName: rawRow.sheetName,
@@ -59,8 +66,13 @@ export class XlsxRowValidator {
       const header = rawRow.headers[i];
       const value = rawRow.values[i];
 
-      if (this.numericFields.includes(header) && value !== null && value !== '') {
-        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+      if (
+        this.numericFields.includes(header) &&
+        value !== null &&
+        value !== ''
+      ) {
+        const numValue =
+          typeof value === 'number' ? value : parseFloat(String(value));
         if (isNaN(numValue)) {
           errors.push({
             sheetName: rawRow.sheetName,

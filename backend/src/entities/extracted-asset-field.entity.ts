@@ -56,7 +56,13 @@ export class ExtractedAssetFieldEntity {
   @Column({ name: 'raw_payload', type: 'jsonb', nullable: true })
   rawPayload!: object | null;
 
-  @Column({ name: 'overall_confidence', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'overall_confidence',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   overallConfidence!: number | null;
 
   @Column({
@@ -80,7 +86,13 @@ export class ExtractedAssetFieldEntity {
   @Column({ name: 'value_type', type: 'varchar', nullable: true })
   valueType!: string | null;
 
-  @Column({ name: 'confidence_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'confidence_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   @Index()
   confidenceScore!: number | null;
 

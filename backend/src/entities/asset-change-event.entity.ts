@@ -55,7 +55,13 @@ export class AssetChangeEventEntity {
   @Column({ name: 'change_reason', type: 'text', nullable: true })
   changeReason!: string | null;
 
-  @Column({ name: 'confidence_delta', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'confidence_delta',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   confidenceDelta!: number | null;
 
   @CreateDateColumn({ name: 'created_at' })

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, DataSource } from 'typeorm';
-import { ExtractedAssetFieldEntity, ValidationStatus } from '../entities/extracted-asset-field.entity';
+import {
+  ExtractedAssetFieldEntity,
+  ValidationStatus,
+} from '../entities/extracted-asset-field.entity';
 
 export interface BulkInsertFieldData {
   documentId: string;
@@ -29,12 +32,16 @@ export class ExtractedAssetFieldRepository {
     private readonly dataSource: DataSource,
   ) {}
 
-  async create(data: Partial<ExtractedAssetFieldEntity>): Promise<ExtractedAssetFieldEntity> {
+  async create(
+    data: Partial<ExtractedAssetFieldEntity>,
+  ): Promise<ExtractedAssetFieldEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
   }
 
-  async createMany(data: Partial<ExtractedAssetFieldEntity>[]): Promise<ExtractedAssetFieldEntity[]> {
+  async createMany(
+    data: Partial<ExtractedAssetFieldEntity>[],
+  ): Promise<ExtractedAssetFieldEntity[]> {
     const entities = this.repository.create(data);
     return this.repository.save(entities);
   }
@@ -52,10 +59,14 @@ export class ExtractedAssetFieldRepository {
     return data.length;
   }
 
-  async bulkInsertWithTransaction(data: BulkInsertFieldData[]): Promise<number> {
+  async bulkInsertWithTransaction(
+    data: BulkInsertFieldData[],
+  ): Promise<number> {
     if (data.length === 0) return 0;
 
-    const validData = data.filter(d => d.fieldName && d.fieldName.trim() !== '');
+    const validData = data.filter(
+      (d) => d.fieldName && d.fieldName.trim() !== '',
+    );
     if (validData.length === 0) return 0;
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -68,7 +79,7 @@ export class ExtractedAssetFieldRepository {
 
       for (let i = 0; i < validData.length; i += CHUNK_SIZE) {
         const chunk = validData.slice(i, i + CHUNK_SIZE);
-        const entities = chunk.map(d => {
+        const entities = chunk.map((d) => {
           const entity = new ExtractedAssetFieldEntity();
           entity.documentId = d.documentId;
           entity.extractionJobId = d.extractionJobId;
@@ -78,7 +89,9 @@ export class ExtractedAssetFieldRepository {
           entity.extractionStrategy = d.extractionStrategy;
           entity.fieldName = d.fieldName;
           entity.rawValue = d.rawValue;
-          entity.normalizedValue = d.normalizedValue ? JSON.parse(d.normalizedValue) : null;
+          entity.normalizedValue = d.normalizedValue
+            ? JSON.parse(d.normalizedValue)
+            : null;
           entity.confidenceScore = d.confidenceScore;
           entity.extractionMethod = d.extractionMethod as any;
           entity.sourceRowIndex = d.sourceRowIndex;
@@ -103,22 +116,40 @@ export class ExtractedAssetFieldRepository {
   }
 
   async findById(id: string): Promise<ExtractedAssetFieldEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<ExtractedAssetFieldEntity> });
+    return this.repository.findOne({
+      where: { id },
+    });
   }
 
-  async findByDocumentId(documentId: string): Promise<ExtractedAssetFieldEntity[]> {
-    return this.repository.find({ where: { documentId } as FindOptionsWhere<ExtractedAssetFieldEntity> });
+  async findByDocumentId(
+    documentId: string,
+  ): Promise<ExtractedAssetFieldEntity[]> {
+    return this.repository.find({
+      where: { documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>,
+    });
   }
 
-  async findByFieldName(fieldName: string): Promise<ExtractedAssetFieldEntity[]> {
-    return this.repository.find({ where: { fieldName } as FindOptionsWhere<ExtractedAssetFieldEntity> });
+  async findByFieldName(
+    fieldName: string,
+  ): Promise<ExtractedAssetFieldEntity[]> {
+    return this.repository.find({
+      where: { fieldName } as FindOptionsWhere<ExtractedAssetFieldEntity>,
+    });
   }
 
-  async findByConfidenceScore(minScore: number): Promise<ExtractedAssetFieldEntity[]> {
-    return this.repository.createQueryBuilder('field').where('field.confidence_score >= :minScore', { minScore }).getMany();
+  async findByConfidenceScore(
+    minScore: number,
+  ): Promise<ExtractedAssetFieldEntity[]> {
+    return this.repository
+      .createQueryBuilder('field')
+      .where('field.confidence_score >= :minScore', { minScore })
+      .getMany();
   }
 
-  async updateValidationStatus(id: string, status: ValidationStatus): Promise<void> {
+  async updateValidationStatus(
+    id: string,
+    status: ValidationStatus,
+  ): Promise<void> {
     await this.repository.update(id, { validationStatus: status });
   }
 
@@ -127,10 +158,16 @@ export class ExtractedAssetFieldRepository {
   }
 
   async deleteByDocumentId(documentId: string): Promise<void> {
-    await this.repository.delete({ documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>);
+    await this.repository.delete({
+      documentId,
+    });
   }
 
-  async findByDocumentIdPaginated(documentId: string, page: number = 1, pageSize: number = 50): Promise<{ fields: ExtractedAssetFieldEntity[]; total: number }> {
+  async findByDocumentIdPaginated(
+    documentId: string,
+    page: number = 1,
+    pageSize: number = 50,
+  ): Promise<{ fields: ExtractedAssetFieldEntity[]; total: number }> {
     const [fields, total] = await this.repository.findAndCount({
       where: { documentId } as FindOptionsWhere<ExtractedAssetFieldEntity>,
       order: { createdAt: 'DESC' },

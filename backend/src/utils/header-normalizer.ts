@@ -26,7 +26,10 @@ export class HeaderNormalizer {
     return { normalizedHeaders, duplicateHeaders };
   }
 
-  static hasRequiredHeaders(headers: string[], requiredFields: string[]): boolean {
+  static hasRequiredHeaders(
+    headers: string[],
+    requiredFields: string[],
+  ): boolean {
     const normalizedHeaders = this.normalize(headers).normalizedHeaders;
     return requiredFields.every((field) => normalizedHeaders.includes(field));
   }

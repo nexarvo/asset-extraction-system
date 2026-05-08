@@ -35,7 +35,13 @@ export class FieldEvidenceEntity {
   @JoinColumn({ name: 'extracted_field_id' })
   extractedField!: ExtractedAssetFieldEntity;
 
-  @Column({ name: 'evidence_weight', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'evidence_weight',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   evidenceWeight!: number | null;
 
   @Column({ name: 'evidence_role', type: 'varchar' })

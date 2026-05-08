@@ -16,7 +16,10 @@ import {
 import { getFileExtension } from '../utils/file.utils';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { DocumentRepository } from '../repositories/document.repository';
-import { ProcessingJobStatus, ProcessingJobType } from '../entities/processing-job.entity';
+import {
+  ProcessingJobStatus,
+  ProcessingJobType,
+} from '../entities/processing-job.entity';
 import { DocumentIngestionStatus } from '../entities/document.entity';
 
 @Injectable()
@@ -71,15 +74,11 @@ export class JobDispatcherService {
           fileType,
         });
 
-        this.logger.log(
-          'job dispatched',
-          'JobDispatcherService',
-          {
-            jobId: processingJob.id,
-            filename: file.filename,
-            fileType,
-          },
-        );
+        this.logger.log('job dispatched', 'JobDispatcherService', {
+          jobId: processingJob.id,
+          filename: file.filename,
+          fileType,
+        });
 
         jobs.push({
           jobId: processingJob.id,
@@ -143,7 +142,7 @@ export class JobDispatcherService {
       case ProcessingJobStatus.RUNNING:
         return 'processing';
       default:
-        return status as JobStatus;
+        return status;
     }
   }
 

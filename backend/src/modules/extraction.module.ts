@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '../core/database/database.module';
 import { AppLoggerService } from '../core/app-logger.service';
+import { llmConfig } from '../core/config/llm.config';
 import { CsvExtractionService } from '../services/extractCSV';
 import { XlsxExtractionService } from '../services/extractXLSX';
 import { PdfExtractionService } from '../services/extractPDF';
@@ -57,9 +59,17 @@ import {
   AssetChangeEventEntity,
   ExtractionErrorEntity,
 } from '../entities';
+import { LLMFactory } from '../services/llmService/factory/llm.factory';
+import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
+import { EnrichmentService } from '../services/llmService/enrichment.service';
+import { ValidationService } from '../services/llmService/validation.service';
+import { ConfidenceService } from '../services/llmService/confidence.service';
+import { ReviewEscalationService } from '../services/llmService/review-escalation.service';
+import { LLMEnrichmentService } from '../services/llmService/llm.service';
 
 @Module({
   imports: [
+    ConfigModule.forFeature(llmConfig),
     DatabaseModule,
     TypeOrmModule.forFeature([
       DocumentEntity,
@@ -118,6 +128,13 @@ import {
     AssetVersionRepository,
     AssetChangeEventRepository,
     ExtractionErrorRepository,
+    LLMFactory,
+    SchemaInferenceService,
+    EnrichmentService,
+    ValidationService,
+    ConfidenceService,
+    ReviewEscalationService,
+    LLMEnrichmentService,
   ],
 })
 export class ExtractionModule {}

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
-import { ReviewQueueEntity, ReviewQueueStatus } from '../entities/review-queue.entity';
+import {
+  ReviewQueueEntity,
+  ReviewQueueStatus,
+} from '../entities/review-queue.entity';
 
 @Injectable()
 export class ReviewQueueRepository {
@@ -16,30 +19,47 @@ export class ReviewQueueRepository {
   }
 
   async findById(id: string): Promise<ReviewQueueEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<ReviewQueueEntity> });
+    return this.repository.findOne({
+      where: { id },
+    });
   }
 
-  async findByEntity(entityType: string, entityId: string): Promise<ReviewQueueEntity | null> {
-    return this.repository.findOne({ where: { entityType, entityId } as FindOptionsWhere<ReviewQueueEntity> });
+  async findByEntity(
+    entityType: string,
+    entityId: string,
+  ): Promise<ReviewQueueEntity | null> {
+    return this.repository.findOne({
+      where: { entityType, entityId },
+    });
   }
 
   async findByStatus(status: ReviewQueueStatus): Promise<ReviewQueueEntity[]> {
-    return this.repository.find({ where: { status } as FindOptionsWhere<ReviewQueueEntity>, order: { priority: 'DESC', createdAt: 'ASC' } });
+    return this.repository.find({
+      where: { status } as FindOptionsWhere<ReviewQueueEntity>,
+      order: { priority: 'DESC', createdAt: 'ASC' },
+    });
   }
 
   async findByAssignedTo(userId: string): Promise<ReviewQueueEntity[]> {
-    return this.repository.find({ where: { assignedTo: userId } as FindOptionsWhere<ReviewQueueEntity> });
+    return this.repository.find({
+      where: { assignedTo: userId } as FindOptionsWhere<ReviewQueueEntity>,
+    });
   }
 
   async findPending(limit: number = 10): Promise<ReviewQueueEntity[]> {
     return this.repository.find({
-      where: { status: ReviewQueueStatus.PENDING } as FindOptionsWhere<ReviewQueueEntity>,
+      where: {
+        status: ReviewQueueStatus.PENDING,
+      } as FindOptionsWhere<ReviewQueueEntity>,
       order: { priority: 'DESC', createdAt: 'ASC' },
       take: limit,
     });
   }
 
-  async findAll(options?: { skip?: number; take?: number }): Promise<[ReviewQueueEntity[], number]> {
+  async findAll(options?: {
+    skip?: number;
+    take?: number;
+  }): Promise<[ReviewQueueEntity[], number]> {
     return this.repository.findAndCount({
       skip: options?.skip,
       take: options?.take,
@@ -47,7 +67,12 @@ export class ReviewQueueRepository {
     });
   }
 
-  async updateStatus(id: string, status: ReviewQueueStatus, resolvedBy?: string, resolutionNotes?: string): Promise<void> {
+  async updateStatus(
+    id: string,
+    status: ReviewQueueStatus,
+    resolvedBy?: string,
+    resolutionNotes?: string,
+  ): Promise<void> {
     await this.repository.update(id, {
       status,
       resolvedBy: resolvedBy || null,
@@ -57,7 +82,10 @@ export class ReviewQueueRepository {
   }
 
   async assignTo(id: string, userId: string): Promise<void> {
-    await this.repository.update(id, { assignedTo: userId, status: ReviewQueueStatus.IN_REVIEW });
+    await this.repository.update(id, {
+      assignedTo: userId,
+      status: ReviewQueueStatus.IN_REVIEW,
+    });
   }
 
   async updatePriority(id: string, priority: number): Promise<void> {

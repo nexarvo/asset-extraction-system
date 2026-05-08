@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { ExtractedAssetCandidate, BatchPersistenceResult } from '../utils/csv-stream.types';
+import {
+  ExtractedAssetCandidate,
+  BatchPersistenceResult,
+} from '../utils/csv-stream.types';
 import { ExtractionPersistenceService } from './extraction-persistence.service';
 import { AppLoggerService } from '../core/app-logger.service';
 

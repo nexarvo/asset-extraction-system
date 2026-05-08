@@ -56,7 +56,9 @@ export class MultiFileValidationPipe implements PipeTransform<
         });
       }
 
-      const isAllowedMimeType = this.options.allowedMimeTypes.includes(file.mimetype);
+      const isAllowedMimeType = this.options.allowedMimeTypes.includes(
+        file.mimetype,
+      );
       const isFallbackMimeType =
         this.options.fallbackMimeTypes?.includes(file.mimetype) ?? false;
 

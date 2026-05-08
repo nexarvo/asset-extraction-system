@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, FindOptionsRelations } from 'typeorm';
-import { CanonicalAssetEntity, CanonicalAssetReviewStatus } from '../entities/canonical-asset.entity';
+import {
+  CanonicalAssetEntity,
+  CanonicalAssetReviewStatus,
+} from '../entities/canonical-asset.entity';
 
 @Injectable()
 export class CanonicalAssetRepository {
@@ -10,36 +13,62 @@ export class CanonicalAssetRepository {
     private readonly repository: Repository<CanonicalAssetEntity>,
   ) {}
 
-  async create(data: Partial<CanonicalAssetEntity>): Promise<CanonicalAssetEntity> {
+  async create(
+    data: Partial<CanonicalAssetEntity>,
+  ): Promise<CanonicalAssetEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
   }
 
   async findById(id: string): Promise<CanonicalAssetEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<CanonicalAssetEntity>, relations: ['fields'] });
+    return this.repository.findOne({
+      where: { id },
+      relations: ['fields'],
+    });
   }
 
   async findByName(name: string): Promise<CanonicalAssetEntity[]> {
-    return this.repository.find({ where: { canonicalName: name } as FindOptionsWhere<CanonicalAssetEntity> });
+    return this.repository.find({
+      where: { canonicalName: name } as FindOptionsWhere<CanonicalAssetEntity>,
+    });
   }
 
-  async findByJurisdiction(jurisdiction: string): Promise<CanonicalAssetEntity[]> {
-    return this.repository.find({ where: { jurisdiction } as FindOptionsWhere<CanonicalAssetEntity> });
+  async findByJurisdiction(
+    jurisdiction: string,
+  ): Promise<CanonicalAssetEntity[]> {
+    return this.repository.find({
+      where: { jurisdiction } as FindOptionsWhere<CanonicalAssetEntity>,
+    });
   }
 
   async findByAssetType(assetType: string): Promise<CanonicalAssetEntity[]> {
-    return this.repository.find({ where: { assetType } as FindOptionsWhere<CanonicalAssetEntity> });
+    return this.repository.find({
+      where: { assetType } as FindOptionsWhere<CanonicalAssetEntity>,
+    });
   }
 
-  async findByReviewStatus(status: CanonicalAssetReviewStatus): Promise<CanonicalAssetEntity[]> {
-    return this.repository.find({ where: { reviewStatus: status } as FindOptionsWhere<CanonicalAssetEntity> });
+  async findByReviewStatus(
+    status: CanonicalAssetReviewStatus,
+  ): Promise<CanonicalAssetEntity[]> {
+    return this.repository.find({
+      where: { reviewStatus: status } as FindOptionsWhere<CanonicalAssetEntity>,
+    });
   }
 
-  async findByDuplicateClusterId(clusterId: string): Promise<CanonicalAssetEntity[]> {
-    return this.repository.find({ where: { duplicateClusterId: clusterId } as FindOptionsWhere<CanonicalAssetEntity> });
+  async findByDuplicateClusterId(
+    clusterId: string,
+  ): Promise<CanonicalAssetEntity[]> {
+    return this.repository.find({
+      where: {
+        duplicateClusterId: clusterId,
+      } as FindOptionsWhere<CanonicalAssetEntity>,
+    });
   }
 
-  async findAll(options?: { skip?: number; take?: number }): Promise<[CanonicalAssetEntity[], number]> {
+  async findAll(options?: {
+    skip?: number;
+    take?: number;
+  }): Promise<[CanonicalAssetEntity[], number]> {
     return this.repository.findAndCount({
       skip: options?.skip,
       take: options?.take,
@@ -48,7 +77,10 @@ export class CanonicalAssetRepository {
     });
   }
 
-  async updateReviewStatus(id: string, status: CanonicalAssetReviewStatus): Promise<void> {
+  async updateReviewStatus(
+    id: string,
+    status: CanonicalAssetReviewStatus,
+  ): Promise<void> {
     await this.repository.update(id, { reviewStatus: status });
   }
 

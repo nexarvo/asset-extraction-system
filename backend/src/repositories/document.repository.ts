@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, FindOptionsRelations } from 'typeorm';
-import { DocumentEntity, DocumentIngestionStatus } from '../entities/document.entity';
+import {
+  DocumentEntity,
+  DocumentIngestionStatus,
+} from '../entities/document.entity';
 
 @Injectable()
 export class DocumentRepository {
@@ -16,19 +19,26 @@ export class DocumentRepository {
   }
 
   async findById(id: string): Promise<DocumentEntity | null> {
-    return this.repository.findOne({ where: { id } as FindOptionsWhere<DocumentEntity> });
+    return this.repository.findOne({
+      where: { id },
+    });
   }
 
   async findByIds(ids: string[]): Promise<DocumentEntity[]> {
     if (ids.length === 0) return [];
-    return this.repository.findBy(ids.map((id) => ({ id } as FindOptionsWhere<DocumentEntity>)));
+    return this.repository.findBy(ids.map((id) => ({ id })));
   }
 
   async findByChecksum(checksum: string): Promise<DocumentEntity | null> {
-    return this.repository.findOne({ where: { checksumSha256: checksum } as FindOptionsWhere<DocumentEntity> });
+    return this.repository.findOne({
+      where: { checksumSha256: checksum },
+    });
   }
 
-  async findAll(options?: { skip?: number; take?: number }): Promise<[DocumentEntity[], number]> {
+  async findAll(options?: {
+    skip?: number;
+    take?: number;
+  }): Promise<[DocumentEntity[], number]> {
     return this.repository.findAndCount({
       skip: options?.skip,
       take: options?.take,
@@ -36,11 +46,18 @@ export class DocumentRepository {
     });
   }
 
-  async findByStatus(status: DocumentIngestionStatus): Promise<DocumentEntity[]> {
-    return this.repository.find({ where: { ingestionStatus: status } as FindOptionsWhere<DocumentEntity> });
+  async findByStatus(
+    status: DocumentIngestionStatus,
+  ): Promise<DocumentEntity[]> {
+    return this.repository.find({
+      where: { ingestionStatus: status } as FindOptionsWhere<DocumentEntity>,
+    });
   }
 
-  async updateStatus(id: string, status: DocumentIngestionStatus): Promise<void> {
+  async updateStatus(
+    id: string,
+    status: DocumentIngestionStatus,
+  ): Promise<void> {
     await this.repository.update(id, { ingestionStatus: status });
   }
 

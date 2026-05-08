@@ -43,7 +43,13 @@ export class CanonicalAssetFieldEntity {
   @Column({ name: 'resolution_strategy', type: 'varchar', nullable: true })
   resolutionStrategy!: string | null;
 
-  @Column({ name: 'confidence_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'confidence_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   confidenceScore!: number | null;
 
   @Column({ type: 'text', nullable: true })

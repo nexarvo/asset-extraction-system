@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { LLMProvider } from '../interfaces/llm-provider.interface';
-import { LLMConfig } from '../../../core/config/llm.config';
+import type { LLMProvider } from '../interfaces/llm-provider.interface';
+import type { LLMConfig } from '../../../core/config/llm.config';
 
 @Injectable()
 export class GoogleProvider implements LLMProvider {
@@ -8,7 +8,7 @@ export class GoogleProvider implements LLMProvider {
   private model: string;
   private baseUrl: string;
 
-  constructor(private config: LLMConfig) {
+  constructor(config: LLMConfig) {
     this.apiKey = config.google?.apiKey || '';
     this.model = config.model;
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -22,7 +22,9 @@ export class GoogleProvider implements LLMProvider {
       throw new Error('Google API key not configured');
     }
 
-    const modelName = this.model.startsWith('gemini') ? this.model : `gemini-2.0-flash`;
+    const modelName = this.model.startsWith('gemini')
+      ? this.model
+      : `gemini-2.0-flash`;
 
     const response = await fetch(
       `${this.baseUrl}/models/${modelName}:generateContent?key=${this.apiKey}`,
@@ -43,9 +45,11 @@ export class GoogleProvider implements LLMProvider {
           ],
           generationConfig: {
             responseMimeType: 'application/json',
-            ...(schema ? {
-              responseSchema: schema,
-            } : {}),
+            ...(schema
+              ? {
+                  responseSchema: schema,
+                }
+              : {}),
           },
         }),
       },
@@ -56,8 +60,10 @@ export class GoogleProvider implements LLMProvider {
       throw new Error(`Google API error: ${error}`);
     }
 
-    const data = await response.json() as { candidates: { content: { parts: { text: string }[] }[] }[] };
-    const text = data.candidates[0]?.content?.parts[0]?.text;
+    const data = (await response.json()) as {
+      candidates: { content: { parts?: { text: string }[] }[] }[];
+    };
+    const text = data.candidates[0]?.content?.[0]?.parts?.[0]?.text;
 
     if (!text) {
       throw new Error('Empty response from Google');

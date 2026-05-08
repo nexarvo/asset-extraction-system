@@ -39,7 +39,13 @@ export class DocumentPageEntity {
   @Column({ name: 'page_classification', type: 'varchar', nullable: true })
   pageClassification!: string | null;
 
-  @Column({ name: 'confidence_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'confidence_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   confidenceScore!: number | null;
 
   @CreateDateColumn({ name: 'created_at' })

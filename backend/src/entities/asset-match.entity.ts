@@ -40,7 +40,13 @@ export class AssetMatchEntity {
   @JoinColumn({ name: 'canonical_asset_id' })
   canonicalAsset!: CanonicalAssetEntity;
 
-  @Column({ name: 'match_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'match_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   @Index()
   matchScore!: number | null;
 

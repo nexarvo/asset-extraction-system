@@ -36,16 +36,28 @@ export class CanonicalAssetEntity {
   @Index()
   jurisdiction!: string | null;
 
-@Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   latitude!: number | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   longitude!: number | null;
 
-  @Column({ name: 'canonical_value', type: 'decimal', precision: 20, scale: 2, nullable: true })
+  @Column({
+    name: 'canonical_value',
+    type: 'decimal',
+    precision: 20,
+    scale: 2,
+    nullable: true,
+  })
   canonicalValue!: number | null;
 
-  @Column({ name: 'overall_confidence', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'overall_confidence',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   overallConfidence!: number | null;
 
   @Column({

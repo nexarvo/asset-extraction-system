@@ -1,6 +1,10 @@
 import { DocumentIngestionStatus } from '../entities/document.entity';
 import { JobStatus } from '../utils/extraction.types';
-import { ExtractedAssetReviewStatus, ExtractionMethod, ValidationStatus } from '../entities/extracted-asset-field.entity';
+import {
+  ExtractedAssetReviewStatus,
+  ExtractionMethod,
+  ValidationStatus,
+} from '../entities/extracted-asset-field.entity';
 
 export class CreateDocumentDto {
   readonly originalFileName!: string;
