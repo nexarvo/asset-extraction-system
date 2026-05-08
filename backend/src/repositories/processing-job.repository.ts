@@ -83,4 +83,8 @@ export class ProcessingJobRepository {
   async delete(id: string): Promise<void> {
     await this.repository.delete(id);
   }
+
+  async updateDocumentId(id: string, documentId: string): Promise<void> {
+    await this.repository.update(id, { documentId });
+  }
 }

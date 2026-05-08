@@ -1,13 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import {
-  RawCsvRow,
-  ParsedCsvRow,
-  CsvRowError,
-  CsvValidationResult,
-} from '../utils/csv-stream.types';
+import type { ParsedCsvRow, CsvRowError, CsvValidationResult } from '../utils/csv-stream.types';
 
-@Injectable()
-export class CsvRowValidator {
+interface GenericRawRow {
+  rowIndex: number;
+  headers: string[];
+  values: (string | number | null)[];
+  raw?: Record<string, unknown>;
+}
+
+export class RowValidationHelper {
   private requiredHeaders: string[] = [];
   private headerCount: number = 0;
 
@@ -19,13 +19,14 @@ export class CsvRowValidator {
     this.headerCount = count;
   }
 
-  validateRow(rawRow: RawCsvRow): CsvValidationResult {
+  validateRow(rawRow: GenericRawRow): CsvValidationResult {
     const errors: CsvRowError[] = [];
+    const stringValues = rawRow.values.map(v => v === null || v === undefined ? '' : String(v));
 
-    if (this.headerCount > 0 && rawRow.values.length !== this.headerCount) {
+    if (this.headerCount > 0 && stringValues.length !== this.headerCount) {
       errors.push({
         rowIndex: rawRow.rowIndex,
-        reason: `Column count mismatch: expected ${this.headerCount}, got ${rawRow.values.length}`,
+        reason: `Column count mismatch: expected ${this.headerCount}, got ${stringValues.length}`,
         rawData: rawRow.raw,
       });
     }
@@ -43,7 +44,7 @@ export class CsvRowValidator {
       }
     }
 
-    const isEmpty = rawRow.values.every((v) => !v || v.trim() === '');
+    const isEmpty = stringValues.every((v: string) => !v || v.trim() === '');
     if (isEmpty) {
       errors.push({
         rowIndex: rawRow.rowIndex,
@@ -58,13 +59,13 @@ export class CsvRowValidator {
     };
   }
 
-  parseRow(rawRow: RawCsvRow): ParsedCsvRow {
+  parseRow(rawRow: GenericRawRow): ParsedCsvRow {
     const data: Record<string, string | null> = {};
 
     for (let i = 0; i < rawRow.headers.length; i++) {
       const header = rawRow.headers[i];
       const value = rawRow.values[i];
-      data[header] = value === undefined || value === '' ? null : value.trim();
+      data[header] = value === null || value === undefined || value === '' ? null : String(value).trim();
     }
 
     return {
@@ -73,7 +74,7 @@ export class CsvRowValidator {
     };
   }
 
-  validateRows(rows: RawCsvRow[]): CsvValidationResult {
+  validateRows(rows: GenericRawRow[]): CsvValidationResult {
     const allErrors: CsvRowError[] = [];
 
     for (const row of rows) {

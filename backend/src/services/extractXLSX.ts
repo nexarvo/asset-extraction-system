@@ -1,34 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import * as XLSX from 'xlsx';
-import { AppLoggerService } from '../core/app-logger.service';
+import { AssetFileInput, ExtractionResult, SupportedFileType } from '../utils/extraction.types';
+import { createExtractionMetadata, getSupportedFileType } from '../utils/file.utils';
+import { normalizeXlsxHeaders } from '../utils/xlsx.utils';
+import { RawXlsxRow, ExtractedAssetCandidate } from '../utils/csv-stream.types';
+import { RowValidationHelper } from '../helpers/row-validation.helper';
+import { AssetMappingHelper } from '../helpers/asset-mapping.helper';
+import { createLogger } from '../helpers/console-logger.helper';
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
-import {
-  AssetFileInput,
-  ExtractionResult,
-  SupportedFileType,
-  RawXlsxCellValue,
-} from '../utils/extraction.types';
-import {
-  createExtractionMetadata,
-  getSupportedFileType,
-} from '../utils/file.utils';
-import { normalizeXlsxHeaders } from '../utils/xlsx.utils';
-import { XlsxAssetMapperService } from './xlsxAssetMapper.service';
-import { XlsxRowValidator } from './xlsx-row-validator';
-import { RawXlsxRow, ExtractedAssetCandidate } from '../utils/csv-stream.types';
 
 @Injectable()
 export class XlsxExtractionService {
-  constructor(
-    private readonly logger: AppLoggerService,
-    private readonly xlsxAssetMapperService: XlsxAssetMapperService,
-    private readonly rowValidator: XlsxRowValidator,
-  ) {}
+  private readonly logger = createLogger('XlsxExtractionService');
+  private readonly rowValidator = new RowValidationHelper();
+  private readonly assetMapper = new AssetMappingHelper();
 
   async extractDataFromXlsx(input: AssetFileInput): Promise<ExtractionResult> {
     try {
-      this.logger.log(
+      this.logger.info(
         'starting spreadsheet extraction',
         'XlsxExtractionService',
         { filename: input.filename },
@@ -76,7 +66,7 @@ export class XlsxExtractionService {
         warnings.push(...sheetResult.warnings);
       }
 
-      this.logger.log(
+      this.logger.info(
         'spreadsheet extraction completed',
         'XlsxExtractionService',
         {
@@ -115,7 +105,7 @@ export class XlsxExtractionService {
     const range = XLSX.utils.decode_range(worksheet['!ref']);
     const totalRows = range.e.r - range.s.r + 1;
 
-    this.logger.log('sheet processing started', 'XlsxExtractionService', {
+    this.logger.info('sheet processing started', 'XlsxExtractionService', {
       filename,
       sheetName,
       totalRows,
@@ -144,7 +134,7 @@ export class XlsxExtractionService {
     const headers = normalizeXlsxHeaders(headerCells.slice(0, headerLength));
     this.rowValidator.setHeaderCount(headers.length);
 
-    this.logger.log('spreadsheet headers parsed', 'XlsxExtractionService', {
+    this.logger.info('spreadsheet headers parsed', 'XlsxExtractionService', {
       filename,
       sheetName,
       headerRowIndex: headerRowNumber + 1,
@@ -182,7 +172,7 @@ export class XlsxExtractionService {
         if (isEmptyRow) {
           consecutiveEmptyRows++;
           if (consecutiveEmptyRows >= MAX_CONSECUTIVE_EMPTY_ROWS) {
-            this.logger.log(
+            this.logger.info(
               'stopping due to consecutive empty rows',
               'XlsxExtractionService',
               { filename, sheetName, consecutiveEmptyRows, processedRows },
@@ -195,7 +185,7 @@ export class XlsxExtractionService {
         }
 
         if (this.isTrailingNoteRow(rawRow)) {
-          this.logger.log(
+          this.logger.info(
             'spreadsheet note row skipped',
             'XlsxExtractionService',
             {
@@ -211,7 +201,7 @@ export class XlsxExtractionService {
 
         if (!validationResult.isValid) {
           validationResult.errors.forEach((error) => {
-            const warning = `sheet ${error.sheetName}, row ${error.rowIndex}: ${error.reason}`;
+            const warning = `sheet ${rawRow.sheetName}, row ${error.rowIndex}: ${error.reason}`;
             warnings.push(warning);
             this.logger.warn(
               'invalid spreadsheet row skipped',
@@ -226,7 +216,7 @@ export class XlsxExtractionService {
         }
 
         const parsedRow = this.rowValidator.parseRow(rawRow);
-        const candidate = this.xlsxAssetMapperService.mapRow(parsedRow);
+        const candidate = this.assetMapper.mapRow(parsedRow.data, rawRow.rowIndex);
         candidates.push(candidate);
       } catch (error) {
         const warning = `sheet ${sheetName}, row ${rowNumber + 1}: ${error instanceof Error ? error.message : String(error)}`;
@@ -244,7 +234,7 @@ export class XlsxExtractionService {
       }
     }
 
-    this.logger.log('sheet processing completed', 'XlsxExtractionService', {
+    this.logger.info('sheet processing completed', 'XlsxExtractionService', {
       filename,
       sheetName,
       processedRows,
@@ -275,7 +265,7 @@ export class XlsxExtractionService {
         warnings.push(...result.warnings);
       }
 
-      this.logger.log(
+      this.logger.info(
         'spreadsheet extraction with backpressure completed',
         'XlsxExtractionService',
         {
@@ -374,7 +364,7 @@ export class XlsxExtractionService {
         }
 
         const parsedRow = this.rowValidator.parseRow(rawRow);
-        const candidate = this.xlsxAssetMapperService.mapRow(parsedRow);
+        const candidate = this.assetMapper.mapRow(parsedRow.data, rawRow.rowIndex);
         await onCandidate(candidate);
       } catch (error) {
         warnings.push(

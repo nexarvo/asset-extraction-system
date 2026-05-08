@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnrichmentService } from './enrichment.service';
-import { ValidationService } from './validation.service';
-import { ConfidenceService } from './confidence.service';
-import { ReviewEscalationService } from './review-escalation.service';
+import { LLMValidationHelper } from '../../helpers/llm-validation.helper';
+import { LLMReviewHelper } from '../../helpers/llm-review.helper';
 import {
   RowEnrichmentInput,
   InferredSchema,
@@ -62,11 +61,11 @@ export interface EnrichedFieldData {
 
 @Injectable()
 export class LLMEnrichmentService {
+  private readonly validationHelper = new LLMValidationHelper();
+  private readonly reviewHelper = new LLMReviewHelper();
+
   constructor(
     private enrichmentService: EnrichmentService,
-    private validationService: ValidationService,
-    private confidenceService: ConfidenceService,
-    private reviewEscalationService: ReviewEscalationService,
     private configService: ConfigService,
     private logger: AppLoggerService,
     private extractedAssetFieldRepository: ExtractedAssetFieldRepository,
@@ -123,9 +122,9 @@ export class LLMEnrichmentService {
         const fieldId = `field_${input.documentId}_${i}`;
 
         const validation =
-          this.validationService.validateEnrichmentOutput(enrichment);
+          this.validationHelper.validateEnrichmentOutput(enrichment);
 
-        const confidence = this.confidenceService.calculateConfidence(
+        const confidence = this.validationHelper.calculateConfidence(
           enrichment,
           validation,
           schema,
@@ -146,14 +145,37 @@ export class LLMEnrichmentService {
         enrichedFields.push(fieldData);
 
         if (validation.issues.length > 0) {
-          const flag = this.validationService.createValidationFlag(
-            fieldId,
-            'extracted_asset_field',
-            validation.issues,
+          const criticalIssues = validation.issues.filter(
+            (i) => i.severity === 'critical' || i.severity === 'high',
           );
-          if (flag) {
-            validationFlags.push(flag);
-          }
+          const flagType =
+            criticalIssues.length > 0
+              ? criticalIssues[0].code
+              : validation.issues[0]?.code || 'VALIDATION_ERROR';
+          const explanation = validation.issues
+            .map((i) => `${i.field}: ${i.message}`)
+            .join('; ');
+          const maxSeverity = validation.issues.reduce((max, issue) => {
+            const severityOrder = ['low', 'medium', 'high', 'critical'];
+            return severityOrder.indexOf(issue.severity) > severityOrder.indexOf(max)
+              ? issue.severity
+              : max;
+          }, 'low');
+
+          const severityMap: Record<string, string> = {
+            critical: 'CRITICAL',
+            high: 'HIGH',
+            medium: 'MEDIUM',
+            low: 'LOW',
+          };
+
+          validationFlags.push({
+            entityType: 'extracted_asset_field',
+            entityId: fieldId,
+            flagType,
+            severity: severityMap[maxSeverity] as any,
+            explanation,
+          });
         }
 
         const reviewInput = {
@@ -164,10 +186,15 @@ export class LLMEnrichmentService {
           enrichmentExplanation: enrichment.explanation,
         };
 
-        const reviewEntry =
-          this.reviewEscalationService.createReviewEntry(reviewInput);
-        if (reviewEntry) {
-          reviewItems.push(reviewEntry);
+        const reviewResult = this.reviewHelper.shouldEscalate(reviewInput);
+        if (reviewResult.shouldEscalate) {
+          reviewItems.push({
+            entityType: 'extracted_asset_field',
+            entityId: fieldId,
+            reviewReason: reviewResult.reason,
+            priority: reviewResult.priority,
+            status: 'pending' as any,
+          });
         }
       }
 

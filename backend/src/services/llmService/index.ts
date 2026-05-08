@@ -8,7 +8,4 @@ export * from './providers/google.provider';
 export * from './providers/ollama.provider';
 export * from './schema-inference.service';
 export * from './enrichment.service';
-export * from './validation.service';
-export * from './confidence.service';
-export * from './review-escalation.service';
 export * from './llm.service';

@@ -4,7 +4,7 @@ import { AppLoggerService } from '../core/app-logger.service';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
 import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
-import { ExtractionErrorRepository } from '../repositories/extraction-error.repository';
+import { DocumentRepository } from '../repositories/document.repository';
 import { EXTRACTION_QUEUE_NAME } from '../queues/extraction.queue';
 import {
   ExtractionJobData,
@@ -13,31 +13,24 @@ import {
 import { ApplicationError } from '../error-codes/application-error';
 import { ErrorCode } from '../error-codes/error-codes';
 import { ProcessingJobStatus } from '../entities/processing-job.entity';
-import { DataSource } from 'typeorm';
-import { XlsxExtractionService } from '../services/extractXLSX';
-import { SupportedFileType } from '../utils/extraction.types';
 import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
 import { LLMEnrichmentService } from '../services/llmService/llm.service';
-import { EnrichmentCoordinatorService } from '../services/llmService/enrichment-coordinator.service';
 import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
+import { ExtractionOrchestrator } from '../helpers/extraction-orchestrator.helper';
 
 const WORKER_CONCURRENCY = 3;
 
 @Injectable()
 export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
   private readonly worker: Worker<ExtractionJobData, ExtractionJobResult>;
-  private currentJobEnrichmentCoordinator: EnrichmentCoordinatorService | null = null;
 
   constructor(
     private readonly logger: AppLoggerService,
     private readonly strategyFactory: ExtractionStrategyFactory,
     private readonly persistenceService: ExtractionPersistenceService,
     private readonly processingJobRepository: ProcessingJobRepository,
-    private readonly extractionErrorRepository: ExtractionErrorRepository,
-    private readonly dataSource: DataSource,
-    private readonly xlsxExtractionService: XlsxExtractionService,
+    private readonly documentRepository: DocumentRepository,
     private readonly llmEnrichmentService: LLMEnrichmentService,
-    private readonly enrichmentCoordinator: EnrichmentCoordinatorService,
     private readonly schemaInferenceService: SchemaInferenceService,
   ) {
     this.worker = new Worker<ExtractionJobData, ExtractionJobResult>(
@@ -61,30 +54,6 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     this.worker.on('failed', async (job, error) => {
       if (job && job.data?.jobId) {
         await this.setJobError(job.data.jobId, error.message);
-
-        const jobExists = await this.processingJobRepository.findById(
-          job.data.jobId,
-        );
-        if (jobExists) {
-          try {
-            await this.extractionErrorRepository.create({
-              processingJobId: job.data.jobId,
-              errorStage: 'EXTRACTION',
-              errorCode: 'JOB_FAILED',
-              message: error.message,
-              stackTrace: error.stack || undefined,
-              recoverable: job.opts?.attempts
-                ? job.attemptsMade < job.opts.attempts
-                : false,
-            });
-          } catch (err) {
-            this.logger.warn(
-              'Failed to create extraction error',
-              'ExtractionWorker',
-              { error: (err as Error).message },
-            );
-          }
-        }
 
         this.logger.error('job failed', error.stack, 'ExtractionWorker', {
           jobId: job.data.jobId,
@@ -136,20 +105,15 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
         { jobId },
       );
 
-      const doc = await this.dataSource.query(
-        `INSERT INTO documents (id, original_file_name, storage_key, ingestion_status, created_at)
-         VALUES (gen_random_uuid(), $1, $2, 'processing', now())
-         RETURNING id`,
-        [filename, `uploads/${Date.now()}-${filename}`],
+      const doc = await this.documentRepository.createForExtraction(
+        filename,
+        `uploads/${Date.now()}-${filename}`,
       );
 
-      documentId = doc[0]?.id;
+      documentId = doc.id;
 
       if (documentId) {
-        await this.dataSource.query(
-          `UPDATE processing_jobs SET document_id = $1 WHERE id = $2`,
-          [documentId, jobId],
-        );
+        await this.processingJobRepository.updateDocumentId(jobId, documentId);
       } else {
         throw new ApplicationError(ErrorCode.PersistenceFailed, undefined, {
           jobId,
@@ -158,23 +122,13 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const isXlsx = fileType === 'xlsx' || fileType === 'xls';
-    if (isXlsx) {
-      await this.processXlsxWithStreaming(
-        bufferData,
-        filename,
-        documentId,
-        jobId,
-      );
-    } else {
-      await this.processWithStrategy(
-        bufferData,
-        filename,
-        fileType,
-        documentId,
-        jobId,
-      );
-    }
+    await this.processWithStrategy(
+      bufferData,
+      filename,
+      fileType,
+      documentId,
+      jobId,
+    );
 
     return {
       jobId,
@@ -182,86 +136,6 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       filename,
       fileType,
     };
-  }
-
-  private async processXlsxWithStreaming(
-    bufferData: Buffer,
-    filename: string,
-    documentId: string,
-    jobId: string,
-  ): Promise<void> {
-    const workbook = this.xlsxExtractionService.readWorkbook(bufferData);
-    const batch: ExtractedAssetCandidate[] = [];
-    const BATCH_SIZE = 500;
-    let currentSheetName: string | undefined;
-
-    await this.xlsxExtractionService.processWorkbookWithBackpressure(
-      workbook,
-      filename,
-      async (candidate: ExtractedAssetCandidate, sheetName?: string) => {
-        currentSheetName = sheetName;
-        if (candidate.rawRowData || candidate.normalizedRowData) {
-          batch.push(candidate);
-          if (batch.length >= BATCH_SIZE) {
-            await this.processXlsxBatch(
-              batch,
-              documentId,
-              jobId,
-              currentSheetName,
-            );
-            batch.length = 0;
-          }
-        }
-      },
-    );
-
-    if (batch.length > 0) {
-      await this.processXlsxBatch(batch, documentId, jobId, currentSheetName);
-    }
-
-    await this.flushAmbiguousRows();
-  }
-
-  private async processXlsxBatch(
-    batch: ExtractedAssetCandidate[],
-    documentId: string,
-    jobId: string,
-    sourceSheetName?: string,
-  ): Promise<void> {
-    const schema = await this.runSchemaInference(batch);
-
-    this.processAndQueueAmbiguousRows(batch, documentId, jobId, schema);
-
-    await this.persistBatchAndLogErrors(batch, documentId, jobId);
-  }
-
-  private async persistBatchAndLogErrors(
-    candidates: ExtractedAssetCandidate[],
-    documentId: string,
-    jobId: string,
-  ): Promise<void> {
-    const result = await this.persistenceService.persistBatchWithTransaction(
-      documentId,
-      jobId,
-      candidates,
-    );
-
-    this.logger.log('batch persistence completed', 'ExtractionWorker', {
-      jobId,
-      savedAssets: result.savedAssets,
-      savedFields: result.savedFields,
-      errors: result.errors.length,
-    });
-
-    for (const error of result.errors) {
-      await this.persistenceService.logError(
-        jobId,
-        'VALIDATION',
-        'XLSX_ROW_INVALID',
-        error.reason,
-        error.rowIndex,
-      );
-    }
   }
 
   private async processWithStrategy(
@@ -301,123 +175,20 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
     );
 
     if (validCandidates.length > 0) {
-      const schema = await this.runSchemaInference(validCandidates);
-
-      this.processAndQueueAmbiguousRows(
-        validCandidates,
+      const orchestrator = new ExtractionOrchestrator(
         documentId,
         jobId,
-        schema,
+        this.persistenceService,
+        this.llmEnrichmentService,
+        this.schemaInferenceService,
       );
 
-      const persistenceResult =
-        await this.persistenceService.persistBatchWithTransaction(
-          documentId,
-          jobId,
-          validCandidates,
-        );
+      await orchestrator.processFile(validCandidates);
 
-      this.logger.log('batch persistence completed', 'ExtractionWorker', {
+      this.logger.log('CSV extraction completed via orchestrator', 'ExtractionWorker', {
         jobId,
-        savedAssets: persistenceResult.savedAssets,
-        savedFields: persistenceResult.savedFields,
-        errors: persistenceResult.errors.length,
+        totalCandidates: validCandidates.length,
       });
-
-      for (const error of persistenceResult.errors) {
-        await this.persistenceService.logError(
-          jobId,
-          'VALIDATION',
-          'CSV_ROW_INVALID',
-          error.reason,
-          error.rowIndex,
-        );
-      }
-
-      await this.flushAmbiguousRows();
-    }
-  }
-
-  private async runSchemaInference(
-    candidates: ExtractedAssetCandidate[],
-  ): Promise<any> {
-    const columns = this.extractColumns(candidates);
-    const sampleRows = candidates
-      .slice(0, 10)
-      .map((c) => c.normalizedRowData || c.rawRowData || {});
-
-    try {
-      return await this.schemaInferenceService.inferSchema(
-        columns,
-        sampleRows as Record<string, unknown>[],
-        true,
-      );
-    } catch (error) {
-      this.logger.warn(
-        'Schema inference failed, using empty schema',
-        'ExtractionWorker',
-        { error: (error as Error).message },
-      );
-      return {};
-    }
-  }
-
-  private processAndQueueAmbiguousRows(
-    candidates: ExtractedAssetCandidate[],
-    documentId: string,
-    jobId: string,
-    schema: any,
-  ): void {
-    for (const candidate of candidates) {
-      if (this.enrichmentCoordinator.isAmbiguousRow(candidate, schema)) {
-        this.enrichmentCoordinator.queueAmbiguousRow(
-          candidate,
-          documentId,
-          jobId,
-          undefined,
-        );
-      } else {
-        candidate.overallConfidence = Math.min(
-          (candidate.overallConfidence || 0.8) + 0.2,
-          1.0,
-        );
-      }
-    }
-
-    this.logger.log(
-      'Processed rows for ambiguous detection',
-      'ExtractionWorker',
-      {
-        totalRows: candidates.length,
-        queuedForEnrichment: this.enrichmentCoordinator.getQueuedCount(),
-      },
-    );
-  }
-
-  private async flushAmbiguousRows(): Promise<void> {
-    if (this.enrichmentCoordinator.hasQueuedRows()) {
-      this.logger.log(
-        'Flushing ambiguous rows for LLM enrichment',
-        'ExtractionWorker',
-        { count: this.enrichmentCoordinator.getQueuedCount() },
-      );
-
-      try {
-        const result =
-          await this.enrichmentCoordinator.flushAndEnrich();
-        this.logger.log(
-          'Ambiguous row enrichment completed',
-          'ExtractionWorker',
-          result as any,
-        );
-      } catch (error) {
-        this.logger.error(
-          'Failed to enrich ambiguous rows',
-          (error as Error).stack,
-          'ExtractionWorker',
-          { error: (error as Error).message },
-        );
-      }
     }
   }
 
@@ -480,59 +251,6 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
           (c as any).rawRowData !== undefined ||
           (c as any).normalizedRowData !== undefined,
       );
-  }
-
-  private async performLLMEnrichment(
-    candidates: ExtractedAssetCandidate[],
-    documentId: string,
-    jobId: string,
-    sourceSheetName?: string,
-  ): Promise<ExtractedAssetCandidate[]> {
-    if (candidates.length === 0) {
-      return candidates;
-    }
-
-    try {
-      const columns = this.extractColumns(candidates);
-      const rows = candidates.map(
-        (c) => c.normalizedRowData || c.rawRowData || {},
-      );
-
-      const enrichmentResult = await this.llmEnrichmentService.enrichExtraction(
-        {
-          documentId,
-          extractionJobId: jobId,
-          columns,
-          rows: rows,
-          sourceSheetName,
-        },
-      );
-
-      if (enrichmentResult.enrichedFields.length > 0) {
-        await this.llmEnrichmentService.persistEnrichmentResults(
-          enrichmentResult,
-        );
-
-        this.logger.log('LLM enrichment completed', 'ExtractionWorker', {
-          jobId,
-          enrichedFields: enrichmentResult.enrichedFields.length,
-          reviewItems: enrichmentResult.reviewItems.length,
-          validationFlags: enrichmentResult.validationFlags.length,
-        });
-      }
-
-      return candidates;
-    } catch (error) {
-      this.logger.warn(
-        'LLM enrichment failed, continuing with basic extraction',
-        'ExtractionWorker',
-        {
-          jobId,
-          error: (error as Error).message,
-        },
-      );
-      return candidates;
-    }
   }
 
   private extractColumns(candidates: ExtractedAssetCandidate[]): string[] {

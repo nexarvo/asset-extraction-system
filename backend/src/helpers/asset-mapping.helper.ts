@@ -1,12 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import {
-  ParsedXlsxRow,
-  ExtractedAssetCandidate,
-  ExtractedFieldCandidate,
-} from '../utils/csv-stream.types';
+import type { ExtractedAssetCandidate, ExtractedFieldCandidate } from '../utils/csv-stream.types';
 
-@Injectable()
-export class XlsxAssetMapperService {
+export class AssetMappingHelper {
   private fieldMapping: Record<string, string> = {
     asset_name: 'asset_name',
     name: 'asset_name',
@@ -35,20 +29,20 @@ export class XlsxAssetMapperService {
     status: 'status',
   };
 
-  mapRow(parsedRow: ParsedXlsxRow): ExtractedAssetCandidate {
+  mapRow(data: Record<string, string | null>, rowIndex: number): ExtractedAssetCandidate {
     const fields: ExtractedFieldCandidate[] = [];
     let rawAssetName: string | undefined;
 
-    for (const [columnName, value] of Object.entries(parsedRow.data)) {
+    for (const [columnName, value] of Object.entries(data)) {
       const mappedFieldName = this.fieldMapping[columnName] || columnName;
 
-      if (mappedFieldName === 'asset_name' && value !== null) {
-        rawAssetName = String(value);
+      if (mappedFieldName === 'asset_name' && value) {
+        rawAssetName = value;
       }
 
       fields.push({
         fieldName: mappedFieldName,
-        rawValue: value !== null ? String(value) : null,
+        rawValue: value,
         normalizedValue: this.normalizeValue(mappedFieldName, value),
         confidenceScore: this.calculateConfidence(mappedFieldName, value),
         sourceColumn: columnName,
@@ -58,83 +52,68 @@ export class XlsxAssetMapperService {
     return {
       rawAssetName,
       fields: [],
-      sourceRowIndex: parsedRow.rowIndex,
-      sourceSheetName: parsedRow.sheetName,
+      sourceRowIndex: rowIndex,
       overallConfidence: this.calculateOverallConfidence(fields),
-      rawRowData: parsedRow.data,
+      rawRowData: data,
       normalizedRowData: Object.fromEntries(
         fields.map((f) => [f.fieldName, f.normalizedValue]),
       ),
     };
   }
 
-  mapRows(parsedRows: ParsedXlsxRow[]): ExtractedAssetCandidate[] {
-    return parsedRows.map((row) => this.mapRow(row));
+  mapRows(dataRows: Record<string, string | null>[]): ExtractedAssetCandidate[] {
+    return dataRows.map((data, index) => this.mapRow(data, index + 1));
   }
 
-  private normalizeValue(
-    fieldName: string,
-    value: string | number | null,
-  ): unknown {
+  private normalizeValue(fieldName: string, value: string | null): unknown {
     if (value === null) return null;
 
     switch (fieldName) {
       case 'latitude':
       case 'lat': {
-        const num =
-          typeof value === 'number' ? value : parseFloat(String(value));
+        const num = parseFloat(value);
         return isNaN(num) ? null : num;
       }
       case 'longitude':
       case 'lng':
       case 'lon': {
-        const num =
-          typeof value === 'number' ? value : parseFloat(String(value));
+        const num = parseFloat(value);
         return isNaN(num) ? null : num;
       }
       case 'asset_value':
       case 'value':
       case 'capacity': {
-        const strValue =
-          typeof value === 'number' ? String(value) : String(value);
-        const cleaned = strValue.replace(/[,$]/g, '').trim();
+        const cleaned = value.replace(/[,$]/g, '').trim();
         const num = parseFloat(cleaned);
         return isNaN(num) ? null : num;
       }
       default:
-        return typeof value === 'string' ? value.trim() : String(value);
+        return value.trim();
     }
   }
 
-  private calculateConfidence(
-    fieldName: string,
-    value: string | number | null,
-  ): number {
+  private calculateConfidence(fieldName: string, value: string | null): number {
     if (value === null || value === '') return 0;
 
     switch (fieldName) {
       case 'asset_name':
-        return value !== null ? 0.9 : 0;
+        return value.length > 0 ? 0.9 : 0;
       case 'latitude':
       case 'longitude': {
-        const num =
-          typeof value === 'number' ? value : parseFloat(String(value));
+        const num = parseFloat(value);
         if (isNaN(num)) return 0.3;
         if (fieldName === 'latitude' && (num < -90 || num > 90)) return 0.3;
         if (fieldName === 'longitude' && (num < -180 || num > 180)) return 0.3;
         return 0.85;
       }
       case 'currency':
-        const strVal = String(value);
-        return /^[A-Z]{3}$/.test(strVal) ? 0.95 : 0.5;
+        return /^[A-Z]{3}$/.test(value) ? 0.95 : 0.5;
       default:
         return 0.7;
     }
   }
 
-  private calculateOverallConfidence(
-    fields: ExtractedFieldCandidate[],
-  ): number {
+  private calculateOverallConfidence(fields: ExtractedFieldCandidate[]): number {
     const nonNullFields = fields.filter((f) => f.rawValue !== null);
     if (nonNullFields.length === 0) return 0;
 

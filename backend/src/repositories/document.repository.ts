@@ -64,4 +64,16 @@ export class DocumentRepository {
   async delete(id: string): Promise<void> {
     await this.repository.delete(id);
   }
+
+  async createForExtraction(
+    originalFileName: string,
+    storageKey: string,
+  ): Promise<DocumentEntity> {
+    const entity = this.repository.create({
+      originalFileName,
+      storageKey,
+      ingestionStatus: DocumentIngestionStatus.PROCESSING,
+    });
+    return this.repository.save(entity);
+  }
 }

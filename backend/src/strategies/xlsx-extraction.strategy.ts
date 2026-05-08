@@ -8,15 +8,17 @@ export class XlsxExtractionStrategy implements IExtractionStrategy {
   constructor(private readonly xlsxExtractionService: XlsxExtractionService) {}
 
   canHandle(fileType: string): boolean {
-    return fileType === 'xlsx';
+    return fileType === 'xlsx' || fileType === 'xls';
   }
 
   async extract(buffer: Buffer, filename: string): Promise<ExtractionResult> {
+    const isXls = filename.toLowerCase().endsWith('.xls');
     const input: AssetFileInput = {
       filename,
       buffer,
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType: isXls
+        ? 'application/vnd.ms-excel'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
 
     return this.xlsxExtractionService.extractDataFromXlsx(input);

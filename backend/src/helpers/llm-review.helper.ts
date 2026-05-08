@@ -1,10 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { ConfidenceScoreResult } from './dto/enrichment.dto';
-import type { ValidationResult } from './dto/validation.dto';
-import {
-  ReviewQueueEntity,
-  ReviewQueueStatus,
-} from '../../entities/review-queue.entity';
+import type { ConfidenceScoreResult } from '../services/llmService/dto/enrichment.dto';
+import type { ValidationResult } from '../services/llmService/dto/validation.dto';
 
 export interface ReviewEscalationInput {
   entityId: string;
@@ -18,14 +13,12 @@ export interface ReviewEscalationResult {
   shouldEscalate: boolean;
   reason?: string;
   priority: number;
-  reviewData?: Partial<ReviewQueueEntity>;
 }
 
 const CONFIDENCE_THRESHOLD = 0.65;
 const VALIDATION_THRESHOLD = 2;
 
-@Injectable()
-export class ReviewEscalationService {
+export class LLMReviewHelper {
   shouldEscalate(input: ReviewEscalationInput): ReviewEscalationResult {
     const reasons: string[] = [];
     let priority = 0;
@@ -87,37 +80,10 @@ export class ReviewEscalationService {
       return { shouldEscalate: false, priority: 0 };
     }
 
-    const reason = reasons.join('; ');
-
     return {
       shouldEscalate: true,
-      reason,
+      reason: reasons.join('; '),
       priority,
-      reviewData: {
-        entityType: input.entityType,
-        entityId: input.entityId,
-        reviewReason: reason,
-        priority,
-        status: ReviewQueueStatus.PENDING,
-      },
-    };
-  }
-
-  createReviewEntry(
-    input: ReviewEscalationInput,
-  ): Partial<ReviewQueueEntity> | null {
-    const escalation = this.shouldEscalate(input);
-
-    if (!escalation.shouldEscalate || !escalation.reviewData) {
-      return null;
-    }
-
-    return {
-      entityType: input.entityType,
-      entityId: input.entityId,
-      reviewReason: escalation.reason,
-      priority: escalation.priority,
-      status: ReviewQueueStatus.PENDING,
     };
   }
 }

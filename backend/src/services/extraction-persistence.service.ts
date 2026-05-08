@@ -9,22 +9,14 @@ import {
   BulkInsertFieldData,
 } from '../repositories/extracted-asset-field.repository';
 import {
-  ExtractionErrorRepository,
-  BulkInsertErrorData,
-} from '../repositories/extraction-error.repository';
-import {
   ExtractionMethod,
   ExtractedAssetReviewStatus,
 } from '../entities/extracted-asset-field.entity';
 
 @Injectable()
 export class ExtractionPersistenceService {
-  private errorBuffer: BulkInsertErrorData[] = [];
-  private readonly ERROR_FLUSH_THRESHOLD = 500;
-
   constructor(
     private readonly extractedAssetFieldRepository: ExtractedAssetFieldRepository,
-    private readonly extractionErrorRepository: ExtractionErrorRepository,
   ) {}
 
   async persistBatch(
@@ -47,8 +39,6 @@ export class ExtractionPersistenceService {
       savedFields += result.savedFields;
       errors.push(...result.errors);
     }
-
-    await this.flushErrors(extractionJobId);
 
     return { savedAssets: candidates.length, savedFields, errors };
   }
@@ -178,31 +168,10 @@ export class ExtractionPersistenceService {
     message: string,
     rowIndex?: number,
   ): Promise<void> {
-    this.errorBuffer.push({
-      processingJobId: processingJobId || null,
-      errorStage: stage,
-      errorCode: code,
-      message: message,
-      recoverable: false,
-      createdAt: new Date(),
+    console.error(`[ExtractionError] ${stage}:${code} - ${message}`, {
+      processingJobId,
+      rowIndex,
     });
-
-    if (this.errorBuffer.length >= this.ERROR_FLUSH_THRESHOLD) {
-      await this.flushErrors(processingJobId);
-    }
-  }
-
-  private async flushErrors(processingJobId: string | null): Promise<void> {
-    if (this.errorBuffer.length === 0) return;
-
-    const errorsToFlush = this.errorBuffer.slice(0, 500);
-    this.errorBuffer = this.errorBuffer.slice(500);
-
-    try {
-      await this.extractionErrorRepository.bulkInsert(errorsToFlush);
-    } catch (error) {
-      this.errorBuffer.push(...errorsToFlush);
-    }
   }
 
   async checkIdempotency(
