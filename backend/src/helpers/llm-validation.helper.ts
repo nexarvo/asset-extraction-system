@@ -2,7 +2,7 @@ import type {
   RowEnrichmentOutput,
   ConfidenceScoreResult,
   ConfidenceFactor,
-  InferredSchema,
+  InferredSchemaV2,
 } from '../services/llmService/dto/enrichment.dto';
 import type { ValidationResult, ValidationIssue, ValidationSeverity } from '../services/llmService/dto/validation.dto';
 
@@ -219,7 +219,7 @@ export class LLMValidationHelper {
   calculateConfidence(
     enrichmentOutput: RowEnrichmentOutput,
     validationResult: ValidationResult,
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
     originalRowData: Record<string, unknown>,
   ): ConfidenceScoreResult {
     const factors: ConfidenceFactor[] = [];
@@ -313,29 +313,31 @@ export class LLMValidationHelper {
   }
 
   private calculateExactColumnMappingScore(
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
     enrichmentOutput: RowEnrichmentOutput,
   ): { score: number; factor?: ConfidenceFactor } {
     let mappedFields = 0;
     let totalFields = 0;
 
-    if (schema.assetNameColumn) {
+    const getColumn = (key: keyof typeof schema.fieldMapping) => schema.fieldMapping[key]?.column ?? null;
+
+    if (getColumn('assetNameColumn')) {
       totalFields++;
       if (enrichmentOutput.normalizedAssetName) mappedFields++;
     }
-    if (schema.valueColumn) {
+    if (getColumn('valueColumn')) {
       totalFields++;
       if (enrichmentOutput.currency) mappedFields++;
     }
-    if (schema.currencyColumn) {
+    if (getColumn('currencyColumn')) {
       totalFields++;
       if (enrichmentOutput.currency) mappedFields++;
     }
-    if (schema.jurisdictionColumn) {
+    if (getColumn('jurisdictionColumn')) {
       totalFields++;
       if (enrichmentOutput.jurisdiction) mappedFields++;
     }
-    if (schema.latitudeColumn && schema.longitudeColumn) {
+    if (getColumn('latitudeColumn') && getColumn('longitudeColumn')) {
       totalFields++;
       if (
         enrichmentOutput.latitude !== undefined &&
@@ -434,16 +436,18 @@ export class LLMValidationHelper {
 
   private calculateMissingFieldScore(
     enrichmentOutput: RowEnrichmentOutput,
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
   ): { score: number; factor?: ConfidenceFactor } {
+    const getColumn = (key: keyof typeof schema.fieldMapping) => schema.fieldMapping[key]?.column ?? null;
+
     const hasAllExpectedFields =
-      (schema.assetNameColumn
+      (getColumn('assetNameColumn')
         ? enrichmentOutput.normalizedAssetName !== undefined
         : true) &&
-      (schema.currencyColumn
+      (getColumn('currencyColumn')
         ? enrichmentOutput.currency !== undefined
         : true) &&
-      (schema.jurisdictionColumn
+      (getColumn('jurisdictionColumn')
         ? enrichmentOutput.jurisdiction !== undefined
         : true);
 

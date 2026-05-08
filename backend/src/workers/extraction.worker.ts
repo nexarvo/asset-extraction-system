@@ -174,7 +174,83 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
       totalRows: stats?.totalRows || 0,
       deterministicRows: stats?.deterministicRows || 0,
       ambiguousRows: stats?.ambiguousRows || 0,
+      hasSchema: !!stats?.inferredSchema,
     });
+
+    if (stats?.inferredSchema && Object.keys(stats.inferredSchema).length > 0) {
+      const schemaAny = stats.inferredSchema as any;
+      const verification = this.verifySchema(schemaAny);
+
+      this.logger.log('schema inference completed', 'ExtractionWorker', {
+        documentId,
+        columnsAnalyzed: schemaAny.columns?.length || 0,
+        qualityScore: schemaAny.schemaQuality?.completeness,
+        ambiguityScore: schemaAny.schemaQuality?.ambiguityScore,
+        deterministicCoverage: schemaAny.schemaQuality?.deterministicCoverage,
+        needsReview: schemaAny.schemaQuality?.needsReview,
+        verificationPassed: verification.passed,
+      });
+
+      if (!verification.passed) {
+        this.logger.warn('schema verification failed', 'ExtractionWorker', {
+          documentId,
+          reasons: verification.reasons,
+          qualityScore: schemaAny.schemaQuality?.completeness,
+        });
+      }
+
+      await this.documentRepository.updateInferredSchema(documentId, stats.inferredSchema);
+      this.logger.log('schema persisted to document', 'ExtractionWorker', {
+        documentId,
+        schemaColumnsCount: schemaAny.columns?.length,
+        schemaFieldMappingKeys: Object.keys(schemaAny.fieldMapping || {}),
+        verificationPassed: verification.passed,
+      });
+    } else {
+      this.logger.warn('no schema to persist', 'ExtractionWorker', {
+        documentId,
+        statsExists: !!stats,
+        inferredSchemaExists: !!stats?.inferredSchema,
+        inferredSchemaKeys: stats?.inferredSchema ? Object.keys(stats.inferredSchema) : [],
+      });
+    }
+  }
+
+  private verifySchema(schema: any): { passed: boolean; reasons: string[] } {
+    const reasons: string[] = [];
+
+    if (!schema.schemaQuality) {
+      reasons.push('missing schema quality');
+    } else {
+      const quality = schema.schemaQuality;
+
+      if (quality.completeness < 0.5) {
+        reasons.push(`low completeness: ${quality.completeness.toFixed(2)}`);
+      }
+
+      if (quality.ambiguityScore > 0.5) {
+        reasons.push(`high ambiguity: ${quality.ambiguityScore.toFixed(2)}`);
+      }
+
+      if (quality.deterministicCoverage < 0.3) {
+        reasons.push(`low deterministic coverage: ${quality.deterministicCoverage.toFixed(2)}`);
+      }
+
+      if (quality.needsReview) {
+        reasons.push('marked as needs review');
+      }
+    }
+
+    const requiredFields = ['assetNameColumn', 'valueColumn', 'currencyColumn', 'jurisdictionColumn'];
+    const fieldMapping = schema.fieldMapping || {};
+    const mappedCount = requiredFields.filter(f => fieldMapping[f]?.column).length;
+
+    if (mappedCount < 2) {
+      reasons.push(`only ${mappedCount}/4 required fields mapped`);
+    }
+
+    const passed = reasons.length === 0;
+    return { passed, reasons };
   }
 
   private getWorkerOptions() {

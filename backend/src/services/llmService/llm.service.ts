@@ -5,7 +5,7 @@ import { LLMValidationHelper } from '../../helpers/llm-validation.helper';
 import { LLMReviewHelper } from '../../helpers/llm-review.helper';
 import {
   RowEnrichmentInput,
-  InferredSchema,
+  InferredSchemaV2,
   EnrichmentMetadata,
   ConfidenceScoreResult,
 } from './dto/enrichment.dto';
@@ -37,7 +37,7 @@ export interface LLMEnrichmentResult {
   enrichedFields: EnrichedFieldData[];
   reviewItems: Partial<ReviewQueueEntity>[];
   validationFlags: Partial<ValidationFlagEntity>[];
-  schema: InferredSchema;
+  schema: InferredSchemaV2;
   errors: string[];
 }
 
@@ -84,11 +84,19 @@ export class LLMEnrichmentService {
         'LLM not configured, skipping enrichment',
         'LLMEnrichmentService',
       );
+      const emptySchema: InferredSchemaV2 = {
+        columns: [],
+        fieldMapping: {},
+        unmappedColumns: [],
+        schemaQuality: { completeness: 0, ambiguityScore: 0, deterministicCoverage: 0, needsReview: true },
+        inferenceNotes: [],
+      };
+
       return {
         enrichedFields: [],
         reviewItems: [],
         validationFlags: [],
-        schema: {},
+        schema: emptySchema,
         errors: ['LLM provider not configured'],
       };
     }
@@ -224,11 +232,19 @@ export class LLMEnrichmentService {
         },
       );
 
+      const emptySchema: InferredSchemaV2 = {
+        columns: [],
+        fieldMapping: {},
+        unmappedColumns: [],
+        schemaQuality: { completeness: 0, ambiguityScore: 0, deterministicCoverage: 0, needsReview: true },
+        inferenceNotes: [],
+      };
+
       return {
         enrichedFields: [],
         reviewItems: [],
         validationFlags: [],
-        schema: {},
+        schema: emptySchema,
         errors: [(error as Error).message],
       };
     }
@@ -257,15 +273,16 @@ export class LLMEnrichmentService {
     documentId: string,
     extractionJobId: string | null,
     originalRow: Record<string, unknown>,
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
     enrichment: any,
     confidence: ConfidenceScoreResult,
     fieldId: string,
     sourceSheetName?: string,
   ): EnrichedFieldData {
+    const assetNameCol = schema.fieldMapping.assetNameColumn?.column ?? null;
     const assetName =
       enrichment.normalizedAssetName ||
-      (originalRow[schema.assetNameColumn || 'asset_name'] as string) ||
+      (originalRow[assetNameCol || 'asset_name'] as string) ||
       `asset_${fieldId}`;
     const fieldName = 'enriched_asset_data';
 

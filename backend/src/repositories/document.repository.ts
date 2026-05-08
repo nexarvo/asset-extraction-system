@@ -61,6 +61,13 @@ export class DocumentRepository {
     await this.repository.update(id, { ingestionStatus: status });
   }
 
+  async updateInferredSchema(
+    id: string,
+    schema: Record<string, unknown>,
+  ): Promise<void> {
+    await this.repository.update(id, { inferredSchema: schema } as any);
+  }
+
   async delete(id: string): Promise<void> {
     await this.repository.delete(id);
   }

@@ -1,205 +1,186 @@
 import { Injectable } from '@nestjs/common';
 import { LLMFactory } from './factory/llm.factory';
 import type { LLMProvider } from './interfaces/llm-provider.interface';
-import type { InferredSchema } from './dto/enrichment.dto';
+import type { InferredSchemaV2 } from './dto/enrichment.dto';
 import {
   SCHEMA_INFERENCE_PROMPT,
   SCHEMA_INFERENCE_SCHEMA,
 } from './prompts/schema-inference.prompt';
-import { AppLoggerService } from '../../core/app-logger.service';
-
-const CANONICAL_FIELD_MAPPINGS: Record<string, string[]> = {
-  assetNameColumn: [
-    'asset',
-    'name',
-    'asset_name',
-    'asset_name',
-    'property',
-    'property_name',
-    'building',
-    'facility',
-    'assetname',
-    'assset',
-  ],
-  valueColumn: [
-    'value',
-    'amount',
-    'price',
-    'valuation',
-    'cost',
-    'total_value',
-    'market_value',
-    'estimated_value',
-    'assessed_value',
-  ],
-  currencyColumn: ['currency', 'curr', 'currency_code', 'currency_code'],
-  jurisdictionColumn: [
-    'jurisdiction',
-    'location',
-    'country',
-    'state',
-    'province',
-    'region',
-    'city',
-    'address',
-    'location',
-  ],
-  latitudeColumn: ['lat', 'latitude', 'lat_deg', 'y'],
-  longitudeColumn: ['lng', 'longitude', 'lon', 'long', 'lng_deg', 'x'],
-  assetTypeColumn: [
-    'type',
-    'asset_type',
-    'category',
-    'property_type',
-    'classification',
-    'kind',
-    'subtype',
-  ],
-};
+import { createLogger } from 'src/helpers/console-logger.helper';
 
 @Injectable()
 export class SchemaInferenceService {
   private llmProvider: LLMProvider | null = null;
 
-  constructor(
-    private llmFactory: LLMFactory,
-    private logger: AppLoggerService,
-  ) {}
+  constructor(private llmFactory: LLMFactory) {}
+
+  private readonly logger = createLogger('SchemaInferenceService');
 
   async inferSchema(
     columns: string[],
     sampleRows: Record<string, unknown>[],
-    useLLM: boolean = false,
-  ): Promise<InferredSchema> {
-    const deterministicResult = this.deterministicSchemaMatch(
-      columns,
-      sampleRows,
-    );
-
-    const unmappedFields = this.getUnmappedFields(deterministicResult);
-
-    if (unmappedFields.length === 0 || !useLLM) {
-      this.logger.log(
-        'Schema inferred deterministically',
-        'SchemaInferenceService',
-        {
-          mappedFields: Object.keys(deterministicResult).filter(
-            (k) => deterministicResult[k as keyof InferredSchema],
-          ),
-        },
+    useLLM: boolean = true,
+  ): Promise<InferredSchemaV2> {
+    if (!useLLM) {
+      throw new Error(
+        'Deterministic schema inference has been removed. Use LLM-based inference.',
       );
-      return deterministicResult;
     }
 
     try {
-      const llmResult = await this.llmFallback(
+      this.logger.info('Starting schema inference v2', {
+        columnCount: columns.length,
+        rowCount: sampleRows.length,
+      });
+
+      const deterministicProfile = this.deterministicColumnProfile(
         columns,
         sampleRows,
-        unmappedFields,
       );
-      return this.mergeSchemaResults(deterministicResult, llmResult);
+      this.logger.info('Deterministic column profiling completed', {
+        profiledColumns: deterministicProfile.size,
+      });
+
+      let llmResult: InferredSchemaV2 | null = null;
+
+      try {
+        this.logger.info('Attempting LLM inference', {
+          timeoutMs: 10000,
+        });
+
+        llmResult = await Promise.race([
+          this.llmInference(columns, sampleRows),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('LLM schema inference timeout')),
+              10000,
+            ),
+          ),
+        ]);
+
+        this.logger.info('LLM inference succeeded', {
+          columnsInResult: llmResult?.columns?.length,
+          fieldsMapped: llmResult ? Object.values(llmResult.fieldMapping).filter(f => f?.column).length : 0,
+        });
+      } catch (llmError) {
+        this.logger.warn(
+          'LLM inference failed or timed out, using manual schema inference',
+          {
+            error: llmError instanceof Error ? llmError.message : String(llmError),
+            errorStack: llmError instanceof Error ? llmError.stack : undefined,
+            timeout: llmError instanceof Error && llmError.message.includes('timeout'),
+          },
+        );
+      }
+
+      let mergedResult: InferredSchemaV2;
+
+      if (llmResult) {
+        mergedResult = this.mergeWithDeterministic(
+          deterministicProfile,
+          llmResult,
+        );
+        this.logger.info('Schema inference v2 completed via LLM', {
+          columnsAnalyzed: mergedResult.columns.length,
+          fieldsMapped: Object.values(mergedResult.fieldMapping).filter(
+            (f) => f?.column,
+          ).length,
+          qualityScore: mergedResult.schemaQuality.completeness,
+          needsReview: mergedResult.schemaQuality.needsReview,
+        });
+      } else {
+        mergedResult = this.createManualSchema(
+          columns,
+          sampleRows,
+          deterministicProfile,
+        );
+        this.logger.info('Schema inference completed via manual inference', {
+          columnsAnalyzed: mergedResult.columns.length,
+          fieldsMapped: Object.values(mergedResult.fieldMapping).filter(
+            (f) => f?.column,
+          ).length,
+          qualityScore: mergedResult.schemaQuality.completeness,
+        });
+      }
+
+      return mergedResult;
     } catch (error) {
-      this.logger.warn(
-        'LLM schema inference failed, using deterministic result',
-        'SchemaInferenceService',
-        {
-          error: (error as Error).message,
-        },
-      );
-      return deterministicResult;
+      this.logger.error('Schema inference v2 failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
-  private deterministicSchemaMatch(
+  private deterministicColumnProfile(
     columns: string[],
     sampleRows: Record<string, unknown>[],
-  ): InferredSchema {
-    const result: InferredSchema = {
-      assetNameColumn: undefined,
-      valueColumn: undefined,
-      currencyColumn: undefined,
-      jurisdictionColumn: undefined,
-      latitudeColumn: undefined,
-      longitudeColumn: undefined,
-      assetTypeColumn: undefined,
-    };
+  ): Map<
+    string,
+    {
+      type: string;
+      isCoordinate: boolean;
+      isCurrency: boolean;
+      isEmpty: boolean;
+    }
+  > {
+    const profile = new Map();
 
-    const normalizedColumns = columns.map((c) => ({
-      original: c,
-      normalized: this.normalizeColumnName(c),
-    }));
+    for (const col of columns) {
+      const values = sampleRows.slice(0, 10).map((row) => row[col]);
+      const nonNullValues = values.filter(
+        (v) => v !== null && v !== undefined && v !== '',
+      );
 
-    for (const [canonicalField, keywords] of Object.entries(
-      CANONICAL_FIELD_MAPPINGS,
-    )) {
-      for (const col of normalizedColumns) {
-        if (this.matchesKeywords(col.normalized, keywords)) {
-          (result as any)[canonicalField] = col.original;
-          break;
+      const isEmpty = nonNullValues.length === 0;
+
+      let detectedType: string = 'string';
+      if (!isEmpty) {
+        const numericCount = nonNullValues.filter(
+          (v) => typeof v === 'number' || this.isNumericString(v),
+        ).length;
+        if (numericCount === nonNullValues.length) {
+          detectedType = 'number';
+        } else if (nonNullValues.every((v) => this.isDateString(v))) {
+          detectedType = 'date';
+        } else if (nonNullValues.every((v) => typeof v === 'boolean')) {
+          detectedType = 'boolean';
         }
       }
-    }
 
-    this.inferFromDataPatterns(result, sampleRows, columns);
+      const isCoordinate =
+        ((col.toLowerCase().includes('lat') || col.toLowerCase() === 'y') &&
+          detectedType === 'number') ||
+        ((col.toLowerCase().includes('lng') ||
+          col.toLowerCase().includes('lon') ||
+          col.toLowerCase() === 'x') &&
+          detectedType === 'number');
 
-    return result;
-  }
+      const isCurrency =
+        col.toLowerCase().includes('currency') ||
+        col.toLowerCase().includes('curr') ||
+        nonNullValues.some((v) => this.isCurrencyCode(v));
 
-  private normalizeColumnName(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '')
-      .replace(/[0-9]+/g, '')
-      .trim();
-  }
-
-  private matchesKeywords(normalizedName: string, keywords: string[]): boolean {
-    for (const keyword of keywords) {
-      if (
-        normalizedName.includes(keyword) ||
-        keyword.includes(normalizedName)
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private inferFromDataPatterns(
-    result: InferredSchema,
-    sampleRows: Record<string, unknown>[],
-    columns: string[],
-  ): void {
-    if (!result.currencyColumn && columns.length > 0) {
-      const currencyCandidate = columns.find((col) => {
-        const values = sampleRows.slice(0, 5).map((row) => row[col]);
-        const currencyCount = values.filter((v) =>
-          this.isCurrencyCode(v),
-        ).length;
-        return currencyCount >= 2;
+      profile.set(col, {
+        type: detectedType,
+        isCoordinate,
+        isCurrency,
+        isEmpty,
       });
-      if (currencyCandidate) {
-        result.currencyColumn = currencyCandidate;
-      }
     }
 
-    if (!result.latitudeColumn && !result.longitudeColumn) {
-      const coords = this.detectCoordinateColumns(columns, sampleRows);
-      if (coords.latitude && coords.longitude) {
-        result.latitudeColumn = coords.latitude;
-        result.longitudeColumn = coords.longitude;
-      }
-    }
+    return profile;
+  }
 
-    if (!result.jurisdictionColumn) {
-      const locationCandidate = columns.find((col) => {
-        const values = sampleRows.slice(0, 5).map((row) => row[col]);
-        return values.some((v) => this.isLocationValue(v));
-      });
-      if (locationCandidate) {
-        result.jurisdictionColumn = locationCandidate;
-      }
-    }
+  private isNumericString(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    return !isNaN(parseFloat(value)) && isFinite(parseFloat(value));
+  }
+
+  private isDateString(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    const date = new Date(value);
+    return !isNaN(date.getTime());
   }
 
   private isCurrencyCode(value: unknown): boolean {
@@ -223,138 +204,280 @@ export class SchemaInferenceService {
     return currencyCodes.includes(value.toUpperCase());
   }
 
-  private isLocationValue(value: unknown): boolean {
-    if (typeof value !== 'string') return false;
-    return value.length >= 2 && /^[A-Za-z\s,.-]+$/.test(value);
-  }
+  private mergeWithDeterministic(
+    deterministicProfile: Map<
+      string,
+      {
+        type: string;
+        isCoordinate: boolean;
+        isCurrency: boolean;
+        isEmpty: boolean;
+      }
+    >,
+    llmResult: InferredSchemaV2,
+  ): InferredSchemaV2 {
+    const merged = { ...llmResult, columns: [...llmResult.columns] };
 
-  private detectCoordinateColumns(
-    columns: string[],
-    sampleRows: Record<string, unknown>[],
-  ): { latitude?: string; longitude?: string } {
-    const numericColumns = columns.filter((col) => {
-      const values = sampleRows.slice(0, 5).map((row) => row[col]);
-      const numericCount = values.filter(
-        (v) => typeof v === 'number' || this.isNumericString(v),
-      ).length;
-      return numericCount >= 3;
-    });
+    for (const col of merged.columns) {
+      const profile = deterministicProfile.get(col.name);
+      if (!profile) continue;
 
-    let latCol: string | undefined;
-    let lngCol: string | undefined;
+      if (profile.isEmpty) {
+        col.detectedType = 'empty';
+        col.semanticRole = 'irrelevant';
+        col.confidence = 1.0;
+        col.reasoning = 'Column contains only empty values';
+      }
 
-    for (const col of numericColumns) {
-      const colLower = col.toLowerCase();
-      if (colLower.includes('lat') || colLower === 'y') {
-        latCol = col;
-      } else if (
-        colLower.includes('lng') ||
-        colLower.includes('lon') ||
-        colLower === 'x'
-      ) {
-        lngCol = col;
+      if (profile.isCoordinate) {
+        const role =
+          col.name.toLowerCase().includes('lat') ||
+          col.name.toLowerCase() === 'y'
+            ? 'latitude'
+            : 'longitude';
+        col.semanticRole = role;
+        col.confidence = 1.0;
+        col.reasoning = `Deterministic match: column name matches ${role} pattern`;
+      }
+
+      if (profile.isCurrency) {
+        col.semanticRole = 'currency';
+        col.confidence = 1.0;
+        col.reasoning =
+          'Deterministic match: column name or values match currency pattern';
       }
     }
 
-    if (!latCol && !lngCol && numericColumns.length >= 2) {
-      const firstValues = sampleRows.slice(0, 5).map((row) => ({
-        col: numericColumns[0],
-        val: this.parseNumeric(row[numericColumns[0]]),
-      }));
-      const secondValues = sampleRows.slice(0, 5).map((row) => ({
-        col: numericColumns[1],
-        val: this.parseNumeric(row[numericColumns[1]]),
-      }));
+    for (const [key, entry] of Object.entries(merged.fieldMapping)) {
+      if (!entry?.column) continue;
 
-      const firstInRange = firstValues.some(
-        (v) => v.val !== null && v.val >= -90 && v.val <= 90,
-      );
-      const secondInRange = secondValues.some(
-        (v) => v.val !== null && v.val >= -180 && v.val <= 180,
-      );
+      const profile = deterministicProfile.get(entry.column);
+      if (!profile) continue;
 
-      if (firstInRange && secondInRange) {
-        latCol = numericColumns[0];
-        lngCol = numericColumns[1];
+      if (profile.isCoordinate) {
+        const isLat =
+          entry.column.toLowerCase().includes('lat') ||
+          entry.column.toLowerCase() === 'y';
+        if (
+          (isLat && key === 'latitudeColumn') ||
+          (!isLat && key === 'longitudeColumn')
+        ) {
+          entry.confidence = 1.0;
+        }
+      }
+
+      if (profile.isCurrency && key === 'currencyColumn') {
+        entry.confidence = 1.0;
       }
     }
 
-    return { latitude: latCol, longitude: lngCol };
+    return merged;
   }
 
-  private isNumericString(value: unknown): boolean {
-    if (typeof value !== 'string') return false;
-    return !isNaN(parseFloat(value)) && isFinite(parseFloat(value));
-  }
-
-  private parseNumeric(value: unknown): number | null {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-      const parsed = parseFloat(value);
-      return isNaN(parsed) ? null : parsed;
-    }
-    return null;
-  }
-
-  private getUnmappedFields(schema: InferredSchema): string[] {
-    const unmapped: string[] = [];
-    if (!schema.assetNameColumn) unmapped.push('assetNameColumn');
-    if (!schema.valueColumn) unmapped.push('valueColumn');
-    if (!schema.currencyColumn) unmapped.push('currencyColumn');
-    if (!schema.jurisdictionColumn) unmapped.push('jurisdictionColumn');
-    if (!schema.latitudeColumn) unmapped.push('latitudeColumn');
-    if (!schema.longitudeColumn) unmapped.push('longitudeColumn');
-    return unmapped;
-  }
-
-  private async llmFallback(
+  private createManualSchema(
     columns: string[],
     sampleRows: Record<string, unknown>[],
-    unmappedFields: string[],
-  ): Promise<InferredSchema> {
+    deterministicProfile: Map<
+      string,
+      {
+        type: string;
+        isCoordinate: boolean;
+        isCurrency: boolean;
+        isEmpty: boolean;
+      }
+    >,
+  ): InferredSchemaV2 {
+    const columnKeywords: Record<string, string[]> = {
+      assetNameColumn: [
+        'asset',
+        'name',
+        'property',
+        'building',
+        'facility',
+        'site',
+        'location',
+      ],
+      valueColumn: [
+        'value',
+        'amount',
+        'price',
+        'valuation',
+        'cost',
+        'total',
+        'market',
+      ],
+      currencyColumn: ['currency', 'curr'],
+      jurisdictionColumn: [
+        'jurisdiction',
+        'location',
+        'country',
+        'state',
+        'province',
+        'region',
+        'city',
+        'address',
+      ],
+      latitudeColumn: ['lat', 'latitude'],
+      longitudeColumn: ['lng', 'lon', 'longitude'],
+      assetTypeColumn: ['type', 'category', 'classification', 'kind'],
+    };
+
+    const columnsAnalysis: {
+      name: string;
+      detectedType: string;
+      sampleValues: unknown[];
+      semanticRole: string;
+      confidence: number;
+      reasoning: string;
+      alternatives: string[];
+    }[] = [];
+    const fieldMapping: InferredSchemaV2['fieldMapping'] = {};
+    const unmappedColumns: { name: string; reason: string }[] = [];
+
+    for (const col of columns) {
+      const profile = deterministicProfile.get(col);
+      const colLower = col.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      let semanticRole = 'unknown';
+      let confidence = 0.1;
+      let reasoning = 'No pattern detected';
+
+      if (profile?.isEmpty) {
+        semanticRole = 'irrelevant';
+        confidence = 1.0;
+        reasoning = 'Column is empty';
+      } else if (profile?.isCoordinate) {
+        semanticRole =
+          colLower.includes('lat') || colLower === 'y'
+            ? 'latitude'
+            : 'longitude';
+        confidence = 1.0;
+        reasoning = 'Coordinate pattern detected';
+      } else if (profile?.isCurrency) {
+        semanticRole = 'currency';
+        confidence = 1.0;
+        reasoning = 'Currency pattern detected';
+      } else {
+        for (const [field, keywords] of Object.entries(columnKeywords)) {
+          for (const kw of keywords) {
+            if (colLower.includes(kw)) {
+              semanticRole =
+                field === 'assetNameColumn'
+                  ? 'asset_name'
+                  : field === 'latitudeColumn'
+                    ? 'latitude'
+                    : field === 'longitudeColumn'
+                      ? 'longitude'
+                      : field === 'valueColumn'
+                        ? 'value'
+                        : field === 'currencyColumn'
+                          ? 'currency'
+                          : field === 'jurisdictionColumn'
+                            ? 'jurisdiction'
+                            : field === 'assetTypeColumn'
+                              ? 'metadata'
+                              : 'unknown';
+              confidence = 0.8;
+              reasoning = `Keyword match: ${kw}`;
+
+              if (!fieldMapping[field as keyof typeof fieldMapping]) {
+                fieldMapping[field as keyof typeof fieldMapping] = {
+                  column: col,
+                  confidence,
+                  alternatives: [],
+                };
+              }
+              break;
+            }
+          }
+          if (semanticRole !== 'unknown') break;
+        }
+      }
+
+      if (semanticRole === 'unknown') {
+        unmappedColumns.push({ name: col, reason: reasoning });
+      }
+
+      const sampleVals = sampleRows
+        .slice(0, 5)
+        .map((r) => r[col])
+        .filter((v) => v !== null && v !== undefined);
+      columnsAnalysis.push({
+        name: col,
+        detectedType: profile?.isEmpty ? 'empty' : profile?.type || 'string',
+        sampleValues: sampleVals,
+        semanticRole,
+        confidence,
+        reasoning,
+        alternatives: [],
+      });
+    }
+
+    const mappedCount = Object.values(fieldMapping).filter(
+      (f) => f?.column,
+    ).length;
+
+    return {
+      columns: columnsAnalysis as any,
+      fieldMapping,
+      unmappedColumns,
+      schemaQuality: {
+        completeness: mappedCount / 4,
+        ambiguityScore: mappedCount > 0 ? 0.3 : 0.9,
+        deterministicCoverage: 1.0,
+        needsReview: mappedCount < 2,
+      },
+      inferenceNotes: [
+        'Schema created via manual inference (LLM failed or timed out)',
+      ],
+    };
+  }
+
+  private async llmInference(
+    columns: string[],
+    sampleRows: Record<string, unknown>[],
+  ): Promise<InferredSchemaV2> {
+    this.logger.info('Creating LLM provider');
+
     if (!this.llmProvider) {
       this.llmProvider = this.llmFactory.createProvider();
     }
 
+    this.logger.info('LLM provider created', {
+      providerClass: this.llmProvider.constructor.name,
+    });
+
     const columnsStr = columns.join(', ');
-    const sampleRowsStr = JSON.stringify(sampleRows.slice(0, 5), null, 2);
+    const sampleRowsStr = JSON.stringify(sampleRows.slice(0, 10), null, 2);
+
+    this.logger.info('Calling LLM for schema inference', {
+      columnCount: columns.length,
+      sampleRowCount: sampleRows.slice(0, 10).length,
+    });
 
     const prompt = SCHEMA_INFERENCE_PROMPT.replace(
       '{{columns}}',
       columnsStr,
     ).replace('{{sampleRows}}', sampleRowsStr);
 
-    return this.llmProvider.generateStructuredOutput<InferredSchema>(
-      prompt,
-      SCHEMA_INFERENCE_SCHEMA,
-    );
-  }
+    try {
+      const result = await this.llmProvider.generateStructuredOutput<InferredSchemaV2>(
+        prompt,
+        SCHEMA_INFERENCE_SCHEMA,
+      );
 
-  private mergeSchemaResults(
-    deterministic: InferredSchema,
-    llmResult: InferredSchema,
-  ): InferredSchema {
-    const merged: InferredSchema = { ...deterministic };
+      this.logger.info('LLM response received', {
+        hasResult: !!result,
+        columnsCount: result?.columns?.length,
+      });
 
-    if (llmResult.assetNameColumn && !merged.assetNameColumn) {
-      merged.assetNameColumn = llmResult.assetNameColumn;
+      return result;
+    } catch (error) {
+      this.logger.error('LLM generateStructuredOutput failed', {
+        error: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
     }
-    if (llmResult.valueColumn && !merged.valueColumn) {
-      merged.valueColumn = llmResult.valueColumn;
-    }
-    if (llmResult.currencyColumn && !merged.currencyColumn) {
-      merged.currencyColumn = llmResult.currencyColumn;
-    }
-    if (llmResult.jurisdictionColumn && !merged.jurisdictionColumn) {
-      merged.jurisdictionColumn = llmResult.jurisdictionColumn;
-    }
-    if (llmResult.latitudeColumn && !merged.latitudeColumn) {
-      merged.latitudeColumn = llmResult.latitudeColumn;
-    }
-    if (llmResult.longitudeColumn && !merged.longitudeColumn) {
-      merged.longitudeColumn = llmResult.longitudeColumn;
-    }
-
-    return merged;
   }
 }

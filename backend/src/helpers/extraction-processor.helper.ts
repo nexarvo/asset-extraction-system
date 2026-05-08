@@ -1,5 +1,5 @@
 import { ExtractedAssetCandidate } from '../utils/csv-stream.types';
-import { InferredSchema } from '../services/llmService/dto/enrichment.dto';
+import { InferredSchemaV2 } from '../services/llmService/dto/enrichment.dto';
 import { BatchHelper, BatchItem } from './batch.helper';
 import { DeterministicHelpers } from './deterministic.helpers';
 import { ConsoleLogger, createLogger } from './console-logger.helper';
@@ -19,7 +19,7 @@ export class ExtractionProcessor {
   private readonly logger: ConsoleLogger;
   private batchHelper: BatchHelper | null = null;
   private persistenceQueue: BatchPersistenceQueue | null = null;
-  private schema: InferredSchema | null = null;
+  private schema: InferredSchemaV2 | null = null;
   private sampleRows: ProcessedRow[] = [];
   private processedCount = 0;
   private totalDeterministic = 0;
@@ -52,7 +52,13 @@ export class ExtractionProcessor {
     }
 
     const candidate = this.mapToCandidate(row, sourceRowIndex, sourceSheetName);
-    batchHelper.processRow(candidate, sourceRowIndex, this.schema || {});
+    batchHelper.processRow(candidate, sourceRowIndex, this.schema || {
+      columns: [],
+      fieldMapping: {},
+      unmappedColumns: [],
+      schemaQuality: { completeness: 0, ambiguityScore: 0, deterministicCoverage: 0, needsReview: true },
+      inferenceNotes: [],
+    });
     this.processedCount++;
   }
 
@@ -100,9 +106,15 @@ export class ExtractionProcessor {
 
   async inferInitialSchema(
     sampleRows: ProcessedRow[],
-  ): Promise<InferredSchema> {
+  ): Promise<InferredSchemaV2> {
     if (sampleRows.length === 0) {
-      return {};
+      return {
+        columns: [],
+        fieldMapping: {},
+        unmappedColumns: [],
+        schemaQuality: { completeness: 0, ambiguityScore: 0, deterministicCoverage: 0, needsReview: true },
+        inferenceNotes: [],
+      };
     }
 
     this.sampleRows = sampleRows.slice(0, 20);
@@ -115,22 +127,19 @@ export class ExtractionProcessor {
       this.sampleRows = this.sampleRows.slice(dataStartRow);
     }
 
-    try {
-      return await this.context.schemaInferenceService.inferSchema(
-        columns,
-        this.sampleRows.map((r) => r.row) as Record<string, unknown>[],
-        true,
-      );
-    } catch (error) {
-      this.logger.warn(`Schema inference failed, using deterministic fallback`, {
-        error: (error as Error).message,
-      });
-      return this.deterministicSchemaInference(columns);
-    }
+    return await this.context.schemaInferenceService.inferSchema(
+      columns,
+      this.sampleRows.map((r) => r.row) as Record<string, unknown>[],
+      true,
+    );
   }
 
-  setSchema(schema: InferredSchema): void {
+  setSchema(schema: InferredSchemaV2): void {
     this.schema = schema;
+  }
+
+  getSchema(): InferredSchemaV2 | null {
+    return this.schema;
   }
 
   private mapToCandidate(
@@ -274,29 +283,5 @@ export class ExtractionProcessor {
       }
     }
     return Array.from(columnsSet);
-  }
-
-  private deterministicSchemaInference(columns: string[]): InferredSchema {
-    const schema: InferredSchema = {};
-
-    for (const col of columns) {
-      if (DeterministicHelpers.matchColumn(col, 'assetName') && !schema.assetNameColumn) {
-        schema.assetNameColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'value') && !schema.valueColumn) {
-        schema.valueColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'currency') && !schema.currencyColumn) {
-        schema.currencyColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'jurisdiction') && !schema.jurisdictionColumn) {
-        schema.jurisdictionColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'latitude') && !schema.latitudeColumn) {
-        schema.latitudeColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'longitude') && !schema.longitudeColumn) {
-        schema.longitudeColumn = col;
-      } else if (DeterministicHelpers.matchColumn(col, 'assetType') && !schema.assetTypeColumn) {
-        schema.assetTypeColumn = col;
-      }
-    }
-
-    return schema;
   }
 }

@@ -45,6 +45,7 @@ export interface ExtractionProcessingStats {
   readonly persistedCount: number;
   readonly enrichedCount: number;
   readonly errors: string[];
+  readonly inferredSchema?: Record<string, unknown>;
 }
 
 export interface ExtractionResult {

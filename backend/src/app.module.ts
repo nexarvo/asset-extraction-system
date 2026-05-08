@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppLoggerService } from './core/app-logger.service';
@@ -7,7 +8,11 @@ import { RequestLoggingMiddleware } from './middlewares/request-logging.middlewa
 import { ExtractionModule } from './modules/extraction.module';
 
 @Module({
-  imports: [DatabaseModule, ExtractionModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    DatabaseModule,
+    ExtractionModule,
+  ],
   controllers: [AppController],
   providers: [AppService, AppLoggerService],
 })

@@ -26,6 +26,63 @@ export interface ConfidenceSignals {
   fieldMissing?: boolean;
 }
 
+export type SemanticRole =
+  | 'asset_identifier'
+  | 'asset_name'
+  | 'value'
+  | 'currency'
+  | 'jurisdiction'
+  | 'latitude'
+  | 'longitude'
+  | 'temporal_field'
+  | 'metadata'
+  | 'irrelevant'
+  | 'unknown';
+
+export interface ColumnAnalysis {
+  name: string;
+  detectedType: 'string' | 'number' | 'boolean' | 'date' | 'empty';
+  sampleValues: (string | number | boolean | null)[];
+  semanticRole: SemanticRole;
+  confidence: number;
+  reasoning: string;
+  alternatives: string[];
+}
+
+export interface FieldMappingEntry {
+  column: string | null;
+  confidence: number;
+  alternatives: string[];
+}
+
+export interface UnmappedColumn {
+  name: string;
+  reason: string;
+}
+
+export interface SchemaQuality {
+  completeness: number;
+  ambiguityScore: number;
+  deterministicCoverage: number;
+  needsReview: boolean;
+}
+
+export interface InferredSchemaV2 {
+  columns: ColumnAnalysis[];
+  fieldMapping: {
+    assetNameColumn?: FieldMappingEntry;
+    valueColumn?: FieldMappingEntry;
+    currencyColumn?: FieldMappingEntry;
+    jurisdictionColumn?: FieldMappingEntry;
+    latitudeColumn?: FieldMappingEntry;
+    longitudeColumn?: FieldMappingEntry;
+    assetTypeColumn?: FieldMappingEntry;
+  };
+  unmappedColumns: UnmappedColumn[];
+  schemaQuality: SchemaQuality;
+  inferenceNotes: string[];
+}
+
 export interface InferredSchema {
   assetNameColumn?: string;
   valueColumn?: string;

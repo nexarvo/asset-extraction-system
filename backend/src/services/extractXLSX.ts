@@ -59,6 +59,8 @@ export class XlsxExtractionService {
       const workbook = this.readWorkbook(input.buffer);
       const processor = new ExtractionProcessor(context);
 
+      this.logger.info('Collecting sample rows for schema inference', { filename: input.filename });
+
       const sampleRows: { row: Record<string, unknown>; sourceRowIndex: number; sourceSheetName?: string }[] = [];
 
       await this.processWorkbookWithBackpressure(
@@ -72,14 +74,31 @@ export class XlsxExtractionService {
               sourceSheetName: candidate.sourceSheetName,
             });
           }
+        },
+      );
 
+      this.logger.info('Sample rows collected, starting schema inference', { 
+        filename: input.filename,
+        sampleRowCount: sampleRows.length,
+      });
+
+      const schema = await processor.inferInitialSchema(sampleRows);
+      processor.setSchema(schema);
+
+      this.logger.info('Schema inference completed, now processing rows', { 
+        filename: input.filename,
+        schemaColumns: schema.columns?.length || 0,
+        fieldsMapped: Object.values(schema.fieldMapping).filter(f => f?.column).length,
+      });
+
+      await this.processWorkbookWithBackpressure(
+        workbook,
+        input.filename,
+        async (candidate) => {
           const row = candidate.normalizedRowData || candidate.rawRowData || {};
           await processor.processRow(row, candidate.sourceRowIndex - 1, candidate.sourceSheetName);
         },
       );
-
-      const schema = await processor.inferInitialSchema(sampleRows);
-      processor.setSchema(schema);
 
       await processor.flush();
 
@@ -97,6 +116,7 @@ export class XlsxExtractionService {
           persistedCount: stats.deterministic,
           enrichedCount: stats.ambiguous,
           errors: [],
+          inferredSchema: schema as unknown as Record<string, unknown>,
         },
       };
     } catch (error) {

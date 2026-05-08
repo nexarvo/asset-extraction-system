@@ -55,6 +55,9 @@ export class DocumentEntity {
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
+  @Column({ name: 'inferred_schema', type: 'jsonb', nullable: true })
+  inferredSchema!: Record<string, unknown> | null;
+
   @OneToMany(() => ProcessingJobEntity, (job) => job.document)
   processingJobs!: ProcessingJobEntity[];
 

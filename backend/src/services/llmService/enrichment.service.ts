@@ -5,7 +5,7 @@ import { SchemaInferenceService } from './schema-inference.service';
 import type {
   RowEnrichmentInput,
   RowEnrichmentOutput,
-  InferredSchema,
+  InferredSchemaV2,
 } from './dto/enrichment.dto';
 import type { BatchEnrichmentOutput } from './dto/enrichment.dto';
 import {
@@ -29,7 +29,7 @@ export class EnrichmentService {
 
   async processBatch(
     rows: RowEnrichmentInput[],
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
     batchSize: number = DEFAULT_BATCH_SIZE,
   ): Promise<BatchEnrichmentOutput> {
     if (rows.length === 0) {
@@ -71,7 +71,7 @@ export class EnrichmentService {
     sampleRows: Record<string, unknown>[],
     allRows: RowEnrichmentInput[],
   ): Promise<{
-    schema: InferredSchema;
+    schema: InferredSchemaV2;
     enrichedRows: RowEnrichmentOutput[];
     errors: { rowIndex: number; reason: string }[];
   }> {
@@ -81,20 +81,23 @@ export class EnrichmentService {
       true,
     );
 
+    const fields = schema.fieldMapping;
+    const getColumn = (key: keyof typeof fields) => fields[key]?.column ?? null;
+
     const rowsToEnrich = allRows.filter((row) =>
-      this.needsEnrichment(row, schema),
+      this.needsEnrichment(row, fields),
     );
     const rowsWithoutEnrichment = allRows.filter(
-      (row) => !this.needsEnrichment(row, schema),
+      (row) => !this.needsEnrichment(row, fields),
     );
 
     const basicOutputs: RowEnrichmentOutput[] = rowsWithoutEnrichment.map(
       (row) => ({
         normalizedAssetName: String(
-          row.rowData[schema.assetNameColumn || 'asset_name'] || '',
+          row.rowData[getColumn('assetNameColumn') || 'asset_name'] || '',
         ),
         currency: this.extractCurrency(
-          row.rowData[schema.currencyColumn || 'currency'],
+          row.rowData[getColumn('currencyColumn') || 'currency'],
         ),
         confidenceSignals: {
           exactValueMatch: true,
@@ -123,14 +126,15 @@ export class EnrichmentService {
 
   private needsEnrichment(
     row: RowEnrichmentInput,
-    schema: InferredSchema,
+    fields: InferredSchemaV2['fieldMapping'],
   ): boolean {
     const data = row.rowData;
+    const getColumn = (key: keyof typeof fields) => fields[key]?.column ?? null;
 
-    if (!schema.currencyColumn && !data.currency) return true;
-    if (!schema.jurisdictionColumn && !data.jurisdiction) return true;
+    if (!getColumn('currencyColumn') && !data.currency) return true;
+    if (!getColumn('jurisdictionColumn') && !data.jurisdiction) return true;
     if (
-      (!schema.latitudeColumn || !schema.longitudeColumn) &&
+      (!getColumn('latitudeColumn') || !getColumn('longitudeColumn')) &&
       (!data.latitude || !data.longitude)
     )
       return true;
@@ -165,7 +169,7 @@ export class EnrichmentService {
 
   private async enrichBatch(
     rows: RowEnrichmentInput[],
-    schema: InferredSchema,
+    schema: InferredSchemaV2,
     offset: number,
   ): Promise<BatchEnrichmentOutput> {
     if (!this.llmProvider) {

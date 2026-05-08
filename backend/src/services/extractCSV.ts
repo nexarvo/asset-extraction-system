@@ -47,23 +47,39 @@ export class CsvExtractionService {
       const warnings: string[] = [];
       const processor = new ExtractionProcessor(context);
 
+      this.logger.info('Collecting sample rows for schema inference', { filename: input.filename });
+
       const sampleRows: { row: Record<string, unknown>; sourceRowIndex: number }[] = [];
-      let rowIndex = 0;
 
       await this.processCsvStream(input, async (row, index) => {
-        rowIndex = index;
         const candidate = this.assetMapper.mapRow(row as Record<string, string | null>, index);
         const rowData = candidate.normalizedRowData || candidate.rawRowData || {};
 
         if (sampleRows.length < 20) {
           sampleRows.push({ row: rowData, sourceRowIndex: index });
         }
+      });
 
-        await processor.processRow(rowData, index);
+      this.logger.info('Sample rows collected, starting schema inference', { 
+        filename: input.filename,
+        sampleRowCount: sampleRows.length,
       });
 
       const schema = await processor.inferInitialSchema(sampleRows);
       processor.setSchema(schema);
+
+      this.logger.info('Schema inference completed, now processing rows', { 
+        filename: input.filename,
+        schemaColumns: schema.columns?.length || 0,
+        fieldsMapped: Object.values(schema.fieldMapping).filter(f => f?.column).length,
+      });
+
+      await this.processCsvStream(input, async (row, index) => {
+        const candidate = this.assetMapper.mapRow(row as Record<string, string | null>, index);
+        const rowData = candidate.normalizedRowData || candidate.rawRowData || {};
+
+        await processor.processRow(rowData, index);
+      });
 
       await processor.flush();
 
@@ -80,6 +96,7 @@ export class CsvExtractionService {
           persistedCount: stats.deterministic,
           enrichedCount: stats.ambiguous,
           errors: [],
+          inferredSchema: schema as unknown as Record<string, unknown>,
         },
       };
     } catch (error) {
