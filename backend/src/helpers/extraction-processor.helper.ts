@@ -7,6 +7,7 @@ import { LLMEnrichmentService } from '../services/llmService/llm.service';
 import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
 import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
 import { ExtractionContext } from '../strategies/extraction-strategy.interface';
+import { BatchPersistenceQueue } from './batch-persistence-queue.helper';
 
 export interface ProcessedRow {
   row: Record<string, unknown>;
@@ -17,6 +18,7 @@ export interface ProcessedRow {
 export class ExtractionProcessor {
   private readonly logger: ConsoleLogger;
   private batchHelper: BatchHelper | null = null;
+  private persistenceQueue: BatchPersistenceQueue | null = null;
   private schema: InferredSchema | null = null;
   private sampleRows: ProcessedRow[] = [];
   private processedCount = 0;
@@ -61,12 +63,17 @@ export class ExtractionProcessor {
 
     if (remaining.deterministic.length > 0) {
       this.totalDeterministic += remaining.deterministic.length;
-      await this.persistBatch(remaining.deterministic);
+      const candidates = remaining.deterministic.map((item) => item.candidate);
+      await this.persistenceQueue?.enqueue(candidates);
     }
 
     if (remaining.ambiguous.length > 0) {
       this.totalAmbiguous += remaining.ambiguous.length;
       await this.enrichBatch(remaining.ambiguous);
+    }
+
+    if (this.persistenceQueue) {
+      await this.persistenceQueue.drain();
     }
   }
 
@@ -83,6 +90,12 @@ export class ExtractionProcessor {
       this.context.documentId,
       this.context.extractionJobId,
     );
+    this.persistenceQueue = new BatchPersistenceQueue(
+      this.context.persistenceService,
+      this.context.documentId,
+      this.context.extractionJobId,
+    );
+    await this.persistenceQueue.initialize();
   }
 
   async inferInitialSchema(
@@ -168,13 +181,14 @@ export class ExtractionProcessor {
   }
 
   private async flushDeterministicBatch(): Promise<void> {
-    if (!this.batchHelper) return;
+    if (!this.batchHelper || !this.persistenceQueue) return;
 
     const batch = this.batchHelper.flushDeterministic();
     if (batch.length === 0) return;
 
     this.totalDeterministic += batch.length;
-    await this.persistBatch(batch);
+    const candidates = batch.map((item) => item.candidate);
+    await this.persistenceQueue.enqueue(candidates);
   }
 
   private async flushAmbiguousBatch(): Promise<void> {

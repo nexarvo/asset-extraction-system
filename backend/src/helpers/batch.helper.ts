@@ -18,7 +18,7 @@ export interface PersistenceBatch {
 export class BatchHelper {
   private deterministicBatch: BatchItem[] = [];
   private ambiguousBatch: BatchItem[] = [];
-  private readonly DETERMINISTIC_BATCH_SIZE = 500;
+  private readonly DETERMINISTIC_BATCH_SIZE = 5000;
   private readonly AMBIGUOUS_BATCH_SIZE = 50;
   private readonly logger: ConsoleLogger;
 
