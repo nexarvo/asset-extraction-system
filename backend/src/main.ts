@@ -8,6 +8,7 @@ async function bootstrap() {
   const logger = new AppLoggerService();
   const app = await NestFactory.create(AppModule, { logger });
 
+  app.setGlobalPrefix('api');
   app.enableCors();
   app.useGlobalFilters(new HttpExceptionFilter(logger));
   await app.listen(process.env.PORT ?? 3000);

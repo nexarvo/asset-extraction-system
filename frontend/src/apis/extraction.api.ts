@@ -1,4 +1,4 @@
-import { apiConfig } from '../config/api.config';
+import { apiConfig } from "../config/api.config";
 
 export interface ExtractRequest {
   fileIds: string[];
@@ -8,13 +8,13 @@ export interface ExtractResponse {
   jobs: Array<{
     jobId: string;
     filename: string;
-    status: 'waiting' | 'processing' | 'completed' | 'failed';
+    status: "waiting" | "processing" | "completed" | "failed";
   }>;
 }
 
 export interface JobStatusResponse {
   jobId: string;
-  status: 'waiting' | 'processing' | 'completed' | 'failed';
+  status: "waiting" | "processing" | "completed" | "failed";
   progress: number;
   error?: string;
 }
@@ -26,7 +26,7 @@ export interface DocumentByJobResponse {
   storageKey: string;
   mimeType: string | null;
   fileSize: number | null;
-  status: 'waiting' | 'processing' | 'completed' | 'failed';
+  status: "waiting" | "processing" | "completed" | "failed";
   progress: number;
   error?: string;
   createdAt: string;
@@ -56,12 +56,16 @@ export interface ReviewResponseDto {
 }
 
 export const extractionApi = {
-  async extract(files: File[]): Promise<ExtractResponse> {
+  async extract(files: File[], sessionId?: string): Promise<ExtractResponse> {
     const formData = new FormData();
-    files.forEach((file) => formData.append('files', file));
+    files.forEach((file) => formData.append("files", file));
 
-    const response = await fetch(`${apiConfig.baseURL}/extractions/extract`, {
-      method: 'POST',
+    const url = sessionId
+      ? `${apiConfig.baseURL}/api/extractions/extract?sessionId=${sessionId}`
+      : `${apiConfig.baseURL}/api/extractions/extract`;
+
+    const response = await fetch(url, {
+      method: "POST",
       body: formData,
     });
 
@@ -73,10 +77,13 @@ export const extractionApi = {
   },
 
   async getJobStatus(jobId: string): Promise<JobStatusResponse> {
-    const response = await fetch(`${apiConfig.baseURL}/extractions/jobs/${jobId}`, {
-      method: 'GET',
-      headers: apiConfig.headers,
-    });
+    const response = await fetch(
+      `${apiConfig.baseURL}/api/extractions/jobs/${jobId}`,
+      {
+        method: "GET",
+        headers: apiConfig.headers,
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`Failed to get job status: ${response.status}`);
@@ -85,9 +92,11 @@ export const extractionApi = {
     return response.json();
   },
 
-  async getDocumentsByJobIds(jobIds: string[]): Promise<DocumentByJobResponse[]> {
-    const response = await fetch(`${apiConfig.baseURL}/documents/by-jobs`, {
-      method: 'POST',
+  async getDocumentsByJobIds(
+    jobIds: string[],
+  ): Promise<DocumentByJobResponse[]> {
+    const response = await fetch(`${apiConfig.baseURL}/api/documents/by-jobs`, {
+      method: "POST",
       headers: apiConfig.headers,
       body: JSON.stringify({ jobIds }),
     });
@@ -99,14 +108,39 @@ export const extractionApi = {
     return response.json();
   },
 
-  async getDocumentReview(documentId: string, page: number = 1, pageSize: number = 10): Promise<ReviewResponseDto> {
-    const response = await fetch(`${apiConfig.baseURL}/documents/${documentId}/review?page=${page}&pageSize=${pageSize}`, {
-      method: 'GET',
-      headers: apiConfig.headers,
-    });
+  async getDocumentReview(
+    documentId: string,
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<ReviewResponseDto> {
+    const response = await fetch(
+      `${apiConfig.baseURL}/api/documents/${documentId}/review?page=${page}&pageSize=${pageSize}`,
+      {
+        method: "GET",
+        headers: apiConfig.headers,
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`Failed to get document review: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  async getDocumentsBySession(
+    sessionId: string,
+  ): Promise<DocumentByJobResponse[]> {
+    const response = await fetch(
+      `${apiConfig.baseURL}/api/documents/by-session/${sessionId}`,
+      {
+        method: "GET",
+        headers: apiConfig.headers,
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to get documents by session: ${response.status}`);
     }
 
     return response.json();

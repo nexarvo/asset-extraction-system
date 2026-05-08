@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import {
-  ChevronDown,
-  ChevronRight,
   Plus,
   Check,
   X,
@@ -16,14 +14,17 @@ import type { RootState } from "../store/rootReducer";
 import {
   updateJobStatus,
   setActiveSession,
+  setSessions,
   createSession,
   renameSession,
   type Session,
   type Job,
 } from "../store/slices/jobs.slice";
 import { extractionApi, type ReviewResponseDto } from "../apis/extraction.api";
+import { sessionsApi } from "../apis/sessions.api";
 
 const POLL_INTERVAL = 3000;
+const FALLBACK_STATUS: Job["status"] = "waiting";
 
 const getStatusStyles = (status: Job["status"]) => {
   switch (status) {
@@ -40,6 +41,18 @@ const getStatusStyles = (status: Job["status"]) => {
   }
 };
 
+const normalizeStatus = (status: unknown): Job["status"] => {
+  if (
+    status === "waiting" ||
+    status === "processing" ||
+    status === "completed" ||
+    status === "failed"
+  ) {
+    return status;
+  }
+  return FALLBACK_STATUS;
+};
+
 export const DocumentsPage = () => {
   const { sessions, activeSessionId } = useSelector(
     (state: RootState) => state.jobs,
@@ -47,9 +60,6 @@ export const DocumentsPage = () => {
   const dispatch = useDispatch();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionsRef = useRef(sessions);
-  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(
-    new Set(),
-  );
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -58,22 +68,88 @@ export const DocumentsPage = () => {
     filename: string;
     data: ReviewResponseDto["fields"] | null;
   } | null>(null);
+  const safeSessions = sessions.map((session) => ({
+    ...session,
+    jobs: Array.isArray(session.jobs)
+      ? session.jobs
+          .filter((job) => Boolean(job))
+          .map((job) => ({
+            jobId: typeof job.jobId === "string" ? job.jobId : "",
+            documentId:
+              typeof job.documentId === "string" ? job.documentId : undefined,
+            filename:
+              typeof job.filename === "string" ? job.filename : "Unnamed document",
+            storageKey:
+              typeof job.storageKey === "string" ? job.storageKey : undefined,
+            mimeType:
+              typeof job.mimeType === "string" || job.mimeType === null
+                ? job.mimeType
+                : null,
+            fileSize: typeof job.fileSize === "number" ? job.fileSize : null,
+            status: normalizeStatus(job.status),
+            progress: typeof job.progress === "number" ? job.progress : 0,
+            error: typeof job.error === "string" ? job.error : undefined,
+            createdAt:
+              typeof job.createdAt === "string" ? job.createdAt : undefined,
+          }))
+      : [],
+  }));
+  sessionsRef.current = safeSessions;
 
-  sessionsRef.current = sessions;
+  const activeSession = safeSessions.find((s) => s.id === activeSessionId);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const sessionsResponse = await sessionsApi.getAll(0, 100);
+        const normalizedSessions: Session[] = [];
+        const existingSessions = new Map(
+          sessionsRef.current.map((session) => [session.id, session]),
+        );
 
-  const toggleSession = useCallback((sessionId: string) => {
-    setExpandedSessions((prev) => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) {
-        next.delete(sessionId);
-      } else {
-        next.add(sessionId);
+        for (const session of sessionsResponse.data) {
+          const docs = await extractionApi.getDocumentsBySession(session.id);
+          const jobsFromDocs: Job[] = docs.map((doc) => ({
+            jobId: typeof doc.jobId === "string" ? doc.jobId : "",
+            documentId: doc.documentId,
+            filename: doc.originalFileName,
+            mimeType: doc.mimeType,
+            fileSize: doc.fileSize,
+            status: normalizeStatus(doc.status),
+            progress: typeof doc.progress === "number" ? doc.progress : 0,
+            createdAt: doc.createdAt,
+          }));
+          const existingSession = existingSessions.get(session.id);
+          const existingJobs = Array.isArray(existingSession?.jobs)
+            ? existingSession.jobs
+            : [];
+          const jobsById = new Map<string, Job>();
+
+          jobsFromDocs.forEach((job) => {
+            if (job.jobId) jobsById.set(job.jobId, job);
+          });
+          existingJobs.forEach((job) => {
+            if (!job.jobId) return;
+            if (!jobsById.has(job.jobId)) {
+              jobsById.set(job.jobId, job);
+            }
+          });
+
+          normalizedSessions.push({
+            id: session.id,
+            name: session.name,
+            jobs: Array.from(jobsById.values()),
+          });
+        }
+
+        dispatch(setSessions(normalizedSessions));
+      } catch (err) {
+        console.error("Failed to fetch sessions:", err);
       }
-      return next;
-    });
-  }, []);
+    };
+
+    fetchData();
+  }, [dispatch]);
 
   const handleCreateSession = useCallback(() => {
     const newId = `session-${Date.now()}`;
@@ -92,8 +168,13 @@ export const DocumentsPage = () => {
     setEditingName("");
   }, []);
 
-  const saveEditing = useCallback(() => {
+  const saveEditing = useCallback(async () => {
     if (editingSessionId && editingName.trim()) {
+      try {
+        await sessionsApi.update(editingSessionId, editingName.trim());
+      } catch (err) {
+        console.error("Failed to update session:", err);
+      }
       dispatch(
         renameSession({
           sessionId: editingSessionId,
@@ -127,16 +208,23 @@ export const DocumentsPage = () => {
     const pollJobs = () => {
       sessionsRef.current.forEach((session) => {
         session.jobs.forEach((job) => {
-          if (job.status === "waiting" || job.status === "processing") {
+          if (
+            job.jobId &&
+            (job.status === "waiting" || job.status === "processing")
+          ) {
             extractionApi
               .getJobStatus(job.jobId)
               .then((status) => {
+                if (!("status" in status)) {
+                  return;
+                }
                 dispatch(
                   updateJobStatus({
                     sessionId: session.id,
-                    jobId: job.jobId,
-                    status: status.status,
-                    progress: status.progress,
+                    jobId: status.jobId || job.jobId,
+                    status: normalizeStatus(status.status),
+                    progress:
+                      typeof status.progress === "number" ? status.progress : 0,
                     error: status.error,
                   }),
                 );
@@ -217,15 +305,13 @@ export const DocumentsPage = () => {
           </button>
         </div>
 
-        {sessions.map((session) => (
+        {safeSessions.map((session) => (
           <SessionItem
             key={session.id}
             session={session}
-            isExpanded={expandedSessions.has(session.id)}
             isActive={session.id === activeSessionId}
             isEditing={editingSessionId === session.id}
             editingName={editingSessionId === session.id ? editingName : ""}
-            onToggle={() => toggleSession(session.id)}
             onSelect={() => dispatch(setActiveSession(session.id))}
             onStartEdit={() => startEditing(session)}
             onEditChange={setEditingName}
@@ -380,8 +466,10 @@ export const DocumentsPage = () => {
               </thead>
               <tbody>
                 {activeSession.jobs.map((job) => {
-                  const statusStyles = getStatusStyles(job.status);
+                  const safeStatus = normalizeStatus(job.status);
+                  const statusStyles = getStatusStyles(safeStatus);
                   const isSelected = selectedJobId === job.jobId;
+                  const safeFilename = job.filename || "Unnamed document";
                   const formatFileSize = (bytes: number | null | undefined) => {
                     if (!bytes) return "-";
                     if (bytes < 1024) return `${bytes} B`;
@@ -391,14 +479,14 @@ export const DocumentsPage = () => {
                   };
                   return (
                     <tr
-                      key={job.jobId}
+                      key={job.jobId || `${safeFilename}-${job.createdAt || "na"}`}
                       style={{
                         borderBottom: "0.5px solid #e5e7eb",
                         backgroundColor: isSelected ? "#f0f4ff" : "transparent",
                         cursor: "pointer",
                         position: "relative",
                       }}
-                      onClick={() => setSelectedJobId(job.jobId)}
+                      onClick={() => setSelectedJobId(job.jobId || null)}
                       onMouseEnter={(e) => {
                         const btn = e.currentTarget.querySelector(
                           ".review-btn",
@@ -420,7 +508,7 @@ export const DocumentsPage = () => {
                           borderRight: "0.5px solid #e5e7eb",
                         }}
                       >
-                        {job.filename}
+                        {safeFilename}
                       </td>
                       <td
                         style={{
@@ -463,8 +551,8 @@ export const DocumentsPage = () => {
                             color: statusStyles.color,
                           }}
                         >
-                          {job.status.charAt(0).toUpperCase() +
-                            job.status.slice(1)}
+                          {safeStatus.charAt(0).toUpperCase() +
+                            safeStatus.slice(1)}
                         </span>
                         <button
                           className="review-btn"
@@ -676,11 +764,9 @@ export const DocumentsPage = () => {
 
 interface SessionItemProps {
   session: Session;
-  isExpanded: boolean;
   isActive: boolean;
   isEditing: boolean;
   editingName: string;
-  onToggle: () => void;
   onSelect: () => void;
   onStartEdit: () => void;
   onEditChange: (name: string) => void;
@@ -690,19 +776,15 @@ interface SessionItemProps {
 
 const SessionItem = ({
   session,
-  isExpanded,
   isActive,
   isEditing,
   editingName,
-  onToggle,
   onSelect,
   onStartEdit,
   onEditChange,
   onSave,
   onCancel,
 }: SessionItemProps) => {
-  const itemCount = session.jobs.length;
-
   return (
     <div>
       <div
@@ -712,34 +794,9 @@ const SessionItem = ({
           alignItems: "center",
           padding: "8px 16px",
           cursor: "pointer",
-          backgroundColor: isActive ? "#eff6ff" : "transparent",
-          borderLeft: isActive ? "3px solid #1B30D4" : "3px solid transparent",
+          backgroundColor: isActive ? "#f3f4f6" : "transparent",
         }}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "20px",
-            height: "20px",
-            border: "none",
-            backgroundColor: "transparent",
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          {isExpanded ? (
-            <ChevronDown size={14} color="#6b7280" />
-          ) : (
-            <ChevronRight size={14} color="#6b7280" />
-          )}
-        </button>
-
         {isEditing ? (
           <>
             <input
@@ -807,9 +864,9 @@ const SessionItem = ({
             <span
               style={{
                 flex: 1,
-                fontSize: "14px",
+                fontSize: "12px",
                 fontWeight: 500,
-                color: isActive ? "#1B30D4" : "#374151",
+                color: "#3A4251",
               }}
             >
               {session.name}
@@ -834,18 +891,6 @@ const SessionItem = ({
             >
               <Pencil size={12} />
             </button>
-            <span
-              style={{
-                fontSize: "12px",
-                color: "#9ca3af",
-                backgroundColor: "#f3f4f6",
-                padding: "2px 8px",
-                borderRadius: "10px",
-                marginLeft: "4px",
-              }}
-            >
-              {itemCount}
-            </span>
           </>
         )}
       </div>

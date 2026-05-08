@@ -36,6 +36,10 @@ export class ProcessingJobEntity {
   @Index()
   documentId!: string | null;
 
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  @Index()
+  sessionId!: string | null;
+
   @ManyToOne(() => DocumentEntity, (doc) => doc.processingJobs, {
     onDelete: 'SET NULL',
   })

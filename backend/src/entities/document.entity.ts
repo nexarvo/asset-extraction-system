@@ -5,10 +5,12 @@ import {
   CreateDateColumn,
   OneToMany,
   Index,
+  ManyToOne,
 } from 'typeorm';
 import { ProcessingJobEntity } from './processing-job.entity';
 import { DocumentPageEntity } from './document-page.entity';
 import { ExtractedAssetFieldEntity } from './extracted-asset-field.entity';
+import { SessionEntity } from './session.entity';
 
 export enum DocumentIngestionStatus {
   UPLOADED = 'uploaded',
@@ -57,6 +59,13 @@ export class DocumentEntity {
 
   @Column({ name: 'inferred_schema', type: 'jsonb', nullable: true })
   inferredSchema!: Record<string, unknown> | null;
+
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  @Index()
+  sessionId!: string | null;
+
+  @ManyToOne(() => SessionEntity, (session) => session.documents, { nullable: true })
+  session!: SessionEntity | null;
 
   @OneToMany(() => ProcessingJobEntity, (job) => job.document)
   processingJobs!: ProcessingJobEntity[];

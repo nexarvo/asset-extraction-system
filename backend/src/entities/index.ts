@@ -4,3 +4,4 @@ export * from './document-page.entity';
 export * from './extracted-asset-field.entity';
 export * from './validation-flag.entity';
 export * from './review-queue.entity';
+export * from './session.entity';

@@ -44,6 +44,13 @@ export class DocumentsController {
     return this.documentsService.findAll({ skip, take });
   }
 
+  @Get('by-session/:sessionId')
+  async findBySessionId(
+    @Param('sessionId') sessionId: string,
+  ): Promise<DocumentResponseDto[]> {
+    return this.documentsService.findBySessionId(sessionId);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string): Promise<DocumentResponseDto | null> {
     return this.documentsService.findOne(id);

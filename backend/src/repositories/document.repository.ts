@@ -46,6 +46,13 @@ export class DocumentRepository {
     });
   }
 
+  async findBySessionId(sessionId: string): Promise<DocumentEntity[]> {
+    return this.repository.find({
+      where: { sessionId } as any,
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findByStatus(
     status: DocumentIngestionStatus,
   ): Promise<DocumentEntity[]> {
@@ -75,12 +82,18 @@ export class DocumentRepository {
   async createForExtraction(
     originalFileName: string,
     storageKey: string,
+    sessionId?: string,
   ): Promise<DocumentEntity> {
     const entity = this.repository.create({
       originalFileName,
       storageKey,
       ingestionStatus: DocumentIngestionStatus.PROCESSING,
+      sessionId: sessionId || null,
     });
     return this.repository.save(entity);
+  }
+
+  async updateSessionId(id: string, sessionId: string): Promise<void> {
+    await this.repository.update(id, { sessionId });
   }
 }

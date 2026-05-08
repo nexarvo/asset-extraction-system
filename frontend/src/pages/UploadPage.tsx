@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Table2 } from 'lucide-react';
 import { extractionApi } from '../apis/extraction.api';
+import { sessionsApi } from '../apis/sessions.api';
 import { createSession, addJobsToSession, setActiveSession, type Job } from '../store/slices/jobs.slice';
 import { ROUTES } from '../constants/routes';
 
@@ -64,7 +65,10 @@ export const UploadPage = () => {
     setError(null);
 
     try {
-      const response = await extractionApi.extract(files);
+      const sessionName = `Session ${new Date().toLocaleString()}`;
+      const session = await sessionsApi.create(sessionName);
+      
+      const response = await extractionApi.extract(files, session.id);
       const jobIds = response.jobs.map((job) => job.jobId);
 
       const documentsResponse = await extractionApi.getDocumentsByJobIds(jobIds);
@@ -85,10 +89,9 @@ export const UploadPage = () => {
         };
       });
 
-      const sessionId = `session-${Date.now()}`;
-      dispatch(createSession({ id: sessionId, name: 'Untitled' }));
-      dispatch(addJobsToSession({ sessionId, jobs }));
-      dispatch(setActiveSession(sessionId));
+      dispatch(createSession({ id: session.id, name: session.name }));
+      dispatch(addJobsToSession({ sessionId: session.id, jobs }));
+      dispatch(setActiveSession(session.id));
       navigate(ROUTES.DOCUMENTS);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed');

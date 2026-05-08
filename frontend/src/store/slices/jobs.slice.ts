@@ -44,6 +44,12 @@ const jobsSlice = createSlice({
         state.activeSessionId = newSession.id;
       }
     },
+    setSessions: (state, action: PayloadAction<Session[]>) => {
+      state.sessions = action.payload;
+      if (!state.activeSessionId && action.payload.length > 0) {
+        state.activeSessionId = action.payload[0].id;
+      }
+    },
     setActiveSession: (state, action: PayloadAction<string>) => {
       state.activeSessionId = action.payload;
     },
@@ -55,7 +61,7 @@ const jobsSlice = createSlice({
     },
     updateJobStatus: (
       state,
-      action: PayloadAction<{ sessionId: string; jobId: string; status: Job['status']; progress: number; error?: string }>
+      action: PayloadAction<{ sessionId: string; jobId: string; status: Job['status']; progress: number; error?: string }>,
     ) => {
       const session = state.sessions.find((s) => s.id === action.payload.sessionId);
       if (session) {
@@ -63,7 +69,6 @@ const jobsSlice = createSlice({
         if (job) {
           job.status = action.payload.status;
           job.progress = action.payload.progress;
-          job.error = action.payload.error;
         }
       }
     },
@@ -90,6 +95,7 @@ const jobsSlice = createSlice({
 
 export const {
   createSession,
+  setSessions,
   setActiveSession,
   addJobsToSession,
   updateJobStatus,

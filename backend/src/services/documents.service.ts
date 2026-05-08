@@ -60,6 +60,11 @@ export class DocumentsService {
     };
   }
 
+  async findBySessionId(sessionId: string): Promise<DocumentResponseDto[]> {
+    const entities = await this.documentRepository.findBySessionId(sessionId);
+    return entities.map((entity) => this.toResponseDto(entity));
+  }
+
   async findByJobIds(
     dto: ListDocumentsDto,
   ): Promise<DocumentWithJobResponseDto[]> {

@@ -17,11 +17,14 @@ import { PdfExtractionStrategy } from '../strategies/pdf-extraction.strategy';
 import { ExtractionStrategyFactory } from '../strategies/extraction-strategy.factory';
 import { ExtractionController } from '../controllers/extraction.controller';
 import { DocumentsController } from '../controllers/documents.controller';
+import { SessionsController } from '../controllers/sessions.controller';
 import { ExtractionRepository } from '../repositories/extraction.repository';
 import { DocumentsService } from '../services/documents.service';
+import { SessionsService } from '../services/sessions.service';
 import { PaddleOcrService } from '../services/paddleOCR';
 import { ExtractionPersistenceService } from '../services/extraction-persistence.service';
 import { DocumentRepository } from '../repositories/document.repository';
+import { SessionRepository } from '../repositories/session.repository';
 import { ProcessingJobRepository } from '../repositories/processing-job.repository';
 import { DocumentPageRepository } from '../repositories/document-page.repository';
 import { ExtractedAssetFieldRepository } from '../repositories/extracted-asset-field.repository';
@@ -34,6 +37,7 @@ import {
   ExtractedAssetFieldEntity,
   ValidationFlagEntity,
   ReviewQueueEntity,
+  SessionEntity,
 } from '../entities';
 import { LLMFactory } from '../services/llmService/factory/llm.factory';
 import { SchemaInferenceService } from '../services/llmService/schema-inference.service';
@@ -52,9 +56,10 @@ import { EnrichmentCoordinatorService } from '../services/llmService/enrichment-
       ExtractedAssetFieldEntity,
       ValidationFlagEntity,
       ReviewQueueEntity,
+      SessionEntity,
     ]),
   ],
-  controllers: [ExtractionController, DocumentsController],
+  controllers: [ExtractionController, DocumentsController, SessionsController],
   providers: [
     AppLoggerService,
     CsvExtractionService,
@@ -70,9 +75,11 @@ import { EnrichmentCoordinatorService } from '../services/llmService/enrichment-
     ExtractionStrategyFactory,
     ExtractionRepository,
     DocumentsService,
+    SessionsService,
     PaddleOcrService,
     ExtractionPersistenceService,
     DocumentRepository,
+    SessionRepository,
     ProcessingJobRepository,
     DocumentPageRepository,
     ExtractedAssetFieldRepository,

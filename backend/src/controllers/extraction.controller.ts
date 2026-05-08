@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UploadedFile,
   UploadedFiles,
   UseInterceptors,
@@ -132,13 +133,14 @@ export class ExtractionController {
   )
   async extractMultiFile(
     @UploadedFiles(EXTRACT_UPLOAD_PIPE) files: AssetFileInput[],
+    @Query('sessionId') sessionId?: string,
   ): Promise<{ jobs: QueuedJobResponse[] }> {
     const fileData = files.map((f) => ({
       filename: f.filename,
       buffer: f.buffer,
     }));
 
-    const jobs = await this.jobDispatcherService.dispatchFiles(fileData);
+    const jobs = await this.jobDispatcherService.dispatchFiles(fileData, sessionId || undefined);
     return { jobs };
   }
 

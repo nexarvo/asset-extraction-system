@@ -95,17 +95,19 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
 
     const processingJob = await this.processingJobRepository.findById(jobId);
     let documentId = processingJob?.documentId;
+    const sessionId = processingJob?.sessionId || null;
 
     if (!documentId) {
       this.logger.warn(
         'No document associated with job, creating one',
         'ExtractionWorker',
-        { jobId },
+        { jobId, sessionId },
       );
 
       const doc = await this.documentRepository.createForExtraction(
         filename,
         `uploads/${Date.now()}-${filename}`,
+        sessionId || undefined,
       );
 
       documentId = doc.id;
@@ -118,6 +120,10 @@ export class ExtractionWorker implements OnModuleInit, OnModuleDestroy {
           reason: 'Failed to create document',
         });
       }
+    }
+
+    if (sessionId && !processingJob?.documentId) {
+      await this.documentRepository.updateSessionId(documentId, sessionId);
     }
 
     await this.processWithStrategy(

@@ -44,6 +44,7 @@ export class JobDispatcherService {
 
   async dispatchFiles(
     files: Array<{ filename: string; buffer: Buffer }>,
+    sessionId?: string,
   ): Promise<QueuedJobResponse[]> {
     try {
       const queue = this.getQueue();
@@ -59,10 +60,12 @@ export class JobDispatcherService {
           mimeType: this.getMimeType(fileType),
           fileSize: file.buffer.length,
           ingestionStatus: DocumentIngestionStatus.PROCESSING,
+          sessionId: sessionId || null,
         });
 
         const processingJob = await this.processingJobRepository.create({
           documentId: document.id,
+          sessionId: sessionId || null,
           jobType: ProcessingJobType.EXTRACTION,
           status: ProcessingJobStatus.QUEUED,
         });
