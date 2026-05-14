@@ -18,9 +18,6 @@ Instead of going to a complex solution like Websocket, I have opted for short po
 ### Time Constraint
 I have developed this app in 2 days as I did not had a lot of time because of the other professional commitments. I also had a constraint of only using FREE coding tool(not much out there, alot of rate limiting), as I did not had CLAUDE subscription. Lastly, I have created the architecture of project and systems like I would do in production. If I had more time to spend I could improve the code quality alot(I did some cleanup, but putting my thoughts out there). If I estimate, the current architecture supports Fast development to complete the full asignment would take 2-3 more days. And if we are building it for production then we can roll out our production ready V1 in 1 week. That was the thing I kept in mind when building the product which means I gone with the production ready architecture.
 
-### Did I had Fun?
-100%. Please look at the frontend and it will show that I was having fun with design :)
-
 #### Upload Screen
 <img width="3024" height="1718" alt="image" src="https://github.com/user-attachments/assets/1a987ecc-bca1-49ee-aed9-03225c2e1e46" />
 
